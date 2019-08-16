@@ -7,7 +7,6 @@ add_definitions(
     -D_ATL_VER=_ATL_VER_30)
 
 include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/wine)
-spec2def(atl.dll atl.spec ADD_IMPORTLIB)
 
 if(MSVC)
     # Disable warning C4477 (printf format warnings)
@@ -19,7 +18,6 @@ list(APPEND SOURCE
     atl30.c
     atl_ax.c
     registrar.c
-    ${CMAKE_CURRENT_BINARY_DIR}/atl_stubs.c
     precomp.h)
 
 list(APPEND atl_rc_deps
@@ -32,8 +30,8 @@ set_source_files_properties(rsrc.rc PROPERTIES OBJECT_DEPENDS "${atl_rc_deps}")
 
 add_library(atl MODULE
     ${SOURCE}
-    rsrc.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/atl.def)
+    rsrc.rc)
+spec2def(atl atl.dll atl.spec ADD_IMPORTLIB)
 
 add_typelib(atl_lib.idl)
 add_dependencies(atl stdole2)
