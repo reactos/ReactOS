@@ -2815,6 +2815,11 @@ ScsiPortDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
     switch (Stack->Parameters.DeviceIoControl.IoControlCode)
     {
+      case IOCTL_ATA_PASS_THROUGH:
+          DPRINT1("IOCTL_ATA_PASS_THROUGH unimplemented. (Caller should use IOCTL_SCSI_PASS_THROUGH instead.)\n");
+          Status = STATUS_NOT_IMPLEMENTED;
+          break;
+
       case IOCTL_SCSI_GET_DUMP_POINTERS:
         DPRINT("  IOCTL_SCSI_GET_DUMP_POINTERS\n");
 
