@@ -410,9 +410,11 @@ static void terminate_process_tree(DWORD ppid)
             if (pe.th32ParentProcessID == ppid &&
                 CompareFileTime(&parent_creation_time, &child_creation_time) < 0)
             {
+                HANDLE process = INVALID_HANDLE_VALUE;
+
                 // Use recursion to browse all child processes
                 terminate_process_tree(pe.th32ProcessID);
-                HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                process = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
                 if (!process)
                 {
                     continue;
