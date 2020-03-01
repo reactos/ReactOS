@@ -534,7 +534,7 @@ static int terminate_processes(void)
                 status_code = 128;
                 continue;
             }
-           
+
             if (!TerminateProcess(process, 0))
             {
                 taskkill_message_printfW(STRING_TERMINATE_FAILED, process_name);
