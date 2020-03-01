@@ -229,7 +229,11 @@ static BOOL get_pid_creation_time(DWORD pid, FILETIME *time)
         result = FALSE;
     }
 
-    CloseHandle(process);
+    if (process != INVALID_HANDLE_VALUE || !process)
+    {
+        CloseHandle(process);
+    }
+
     return result;
 }
 
