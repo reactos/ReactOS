@@ -212,50 +212,67 @@ static BOOL get_process_name_from_pid(DWORD pid, WCHAR *buf, DWORD chars)
  * system processes. */
 
 
-static DWORD *find_child_pid(DWORD ppid, DWORD *list_count)
+static BOOL get_pid_creation_time(DWORD pid, FILETIME *time)
 {
-    DWORD* pid_list = HeapAlloc(GetProcessHeap(), 0, 128 * sizeof(DWORD));
-    DWORD count = 0;
-    HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    PROCESSENTRY32W pe = { 0 };
-    pe.dwSize = sizeof(PROCESSENTRY32W);
+    HANDLE process = INVALID_HANDLE_VALUE;
+    FILETIME t1 = { 0 }, t2 = { 0 }, t3 = { 0 };
+    BOOL result = TRUE;
 
-    if (Process32FirstW(h, &pe)) 
+    process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+    if (!process)
     {
-        do
-        {
-            if (pe.th32ParentProcessID == ppid)
-            {
-                pid_list[count] = pe.th32ProcessID;
-                count++;
-            }
-        } while (Process32NextW(h, &pe));
+        result = FALSE;
     }
-    
-    CloseHandle(h);
-    *list_count = count;
-    return pid_list;
+
+    if (!GetProcessTimes(process, time, &t1, &t2, &t3))
+    {
+        result = FALSE;
+    }
+
+    CloseHandle(process);
+    return result;
 }
 
 static void send_close_messages_tree(DWORD ppid)
 {
-    DWORD child_size = 0, i = 0;
-    DWORD* child_pid_list = find_child_pid(ppid, &child_size);
+    FILETIME parent_creation_time = { 0 };
+    HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    PROCESSENTRY32W pe = { 0 };
+    pe.dwSize = sizeof(PROCESSENTRY32W);
 
-    // Use recursion to browse all child processes
-    while (i < child_size)
+    if (!get_pid_creation_time(ppid, &parent_creation_time) || !h)
     {
-        send_close_messages_tree(child_pid_list[i]);
-        struct pid_close_info info = { child_pid_list[i] };
-        EnumWindows(pid_enum_proc, (LPARAM)&info);
-        if (info.found)
-        {
-            taskkill_message_printfW(STRING_CLOSE_CHILD, child_pid_list[i], ppid);
-        }
-        i++;
+        CloseHandle(h);
+        return;
     }
 
-    HeapFree(GetProcessHeap(), 0, child_pid_list);
+    if (Process32FirstW(h, &pe))
+    {
+        do
+        {
+            FILETIME child_creation_time = { 0 };
+            struct pid_close_info info = { pe.th32ProcessID };
+
+            if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time)) {
+                continue;
+            }
+
+            // Compare creation time to avoid reuse PID, thanks to @ThFabba
+            if (pe.th32ParentProcessID == ppid &&
+                CompareFileTime(&parent_creation_time, &child_creation_time) < 0)
+            {
+                // Use recursion to browse all child processes
+                send_close_messages_tree(pe.th32ProcessID);
+                EnumWindows(pid_enum_proc, (LPARAM)&info);
+                if (info.found)
+                {
+                    taskkill_message_printfW(STRING_CLOSE_CHILD, pe.th32ProcessID, ppid);
+                }
+            }
+        } while (Process32NextW(h, &pe));
+    }
+
+    CloseHandle(h);
 }
 
 static int send_close_messages(void)
@@ -276,8 +293,11 @@ static int send_close_messages(void)
     {
         WCHAR *p = task_list[i];
         BOOL is_numeric = TRUE;
-        DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, 128 * sizeof(DWORD));
+        DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
         DWORD pkill_size = 0;
+
+        if (!pkill_list)
+            return 2;
 
         /* Determine whether the string is not numeric. */
         while (*p)
@@ -366,34 +386,52 @@ static int send_close_messages(void)
 
 static void terminate_process_tree(DWORD ppid)
 {
-    DWORD child_size = 0, index = 0;
-    DWORD* child_pid_list = find_child_pid(ppid, &child_size);
+    FILETIME parent_creation_time = { 0 };
+    HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    PROCESSENTRY32W pe = { 0 };
+    pe.dwSize = sizeof(PROCESSENTRY32W);
 
-    // Use recursion to browse all child processes
-    while (index < child_size)
+    if (!get_pid_creation_time(ppid, &parent_creation_time) || !h)
     {
-        terminate_process_tree(child_pid_list[index]);
-        HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, child_pid_list[index]);
-        if (!process)
-        {
-            index++;
-            continue;
-        }
-
-        if (!TerminateProcess(process, 0))
-        {
-            taskkill_message_printfW(STRING_TERM_CHILD_FAILED, child_pid_list[index], ppid);
-            CloseHandle(process);
-            index++;
-            continue;
-        }
-
-        taskkill_message_printfW(STRING_TERM_CHILD, child_pid_list[index], ppid);
-        CloseHandle(process);
-        index++;
+        CloseHandle(h);
+        return;
     }
 
-    HeapFree(GetProcessHeap(), 0, child_pid_list);
+    if (Process32FirstW(h, &pe))
+    {
+        do {
+            FILETIME child_creation_time = { 0 };
+
+            if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time)) {
+                continue;
+            }
+
+            // Compare creation time to avoid reuse PID, thanks to @ThFabba
+            if (pe.th32ParentProcessID == ppid &&
+                CompareFileTime(&parent_creation_time, &child_creation_time) < 0)
+            {
+                // Use recursion to browse all child processes
+                terminate_process_tree(pe.th32ProcessID);
+                HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                if (!process)
+                {
+                    continue;
+                }
+
+                if (!TerminateProcess(process, 0))
+                {
+                    taskkill_message_printfW(STRING_TERM_CHILD_FAILED, pe.th32ProcessID, ppid);
+                    CloseHandle(process);
+                    continue;
+                }
+
+                taskkill_message_printfW(STRING_TERM_CHILD, pe.th32ProcessID, ppid);
+                CloseHandle(process);
+            }
+        } while (Process32NextW(h, &pe));
+    }
+
+    CloseHandle(h);
 }
 
 static int terminate_processes(void)
@@ -412,10 +450,13 @@ static int terminate_processes(void)
 
     for (i = 0; i < task_count; i++)
     {
-        WCHAR* p = task_list[i];
+        WCHAR *p = task_list[i];
         BOOL is_numeric = TRUE;
-        DWORD* pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
+        DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
         DWORD pkill_size = 0;
+
+        if (!pkill_list)
+            return 2;
 
         /* Determine whether the string is not numeric. */
         while (*p)
