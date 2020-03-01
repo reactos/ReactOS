@@ -214,13 +214,13 @@ static BOOL get_process_name_from_pid(DWORD pid, WCHAR *buf, DWORD chars)
 
 static DWORD *find_child_pid(DWORD ppid, DWORD *list_count)
 {
-    DWORD* pid_list = HeapAlloc(GetProcessHeap(), 0, 1024 * sizeof(DWORD));
+    DWORD* pid_list = HeapAlloc(GetProcessHeap(), 0, 128 * sizeof(DWORD));
     DWORD count = 0;
     HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    PROCESSENTRY32 pe = { 0 };
-    pe.dwSize = sizeof(PROCESSENTRY32);
+    PROCESSENTRY32W pe = { 0 };
+    pe.dwSize = sizeof(PROCESSENTRY32W);
 
-    if (Process32First(h, &pe)) 
+    if (Process32FirstW(h, &pe)) 
     {
         do
         {
@@ -229,11 +229,33 @@ static DWORD *find_child_pid(DWORD ppid, DWORD *list_count)
                 pid_list[count] = pe.th32ProcessID;
                 count++;
             }
-        } while (Process32Next(h, &pe));
+        } while (Process32NextW(h, &pe));
     }
     
+    CloseHandle(h);
     *list_count = count;
     return pid_list;
+}
+
+static void send_close_messages_tree(DWORD ppid)
+{
+    DWORD child_size = 0, i = 0;
+    DWORD* child_pid_list = find_child_pid(ppid, &child_size);
+
+    // Use recursion to browse all child processes
+    while (i < child_size)
+    {
+        send_close_messages_tree(child_pid_list[i]);
+        struct pid_close_info info = { child_pid_list[i] };
+        EnumWindows(pid_enum_proc, (LPARAM)&info);
+        if (info.found)
+        {
+            taskkill_message_printfW(STRING_CLOSE_CHILD, child_pid_list[i], ppid);
+        }
+        i++;
+    }
+
+    HeapFree(GetProcessHeap(), 0, child_pid_list);
 }
 
 static int send_close_messages(void)
@@ -317,18 +339,7 @@ static int send_close_messages(void)
             // Send close messages to child first
             if (kill_child_processes)
             {
-                DWORD child_size = 0, i = 0, parent_pid = pid;
-                DWORD* child_pid_list = find_child_pid(parent_pid, &child_size);
-
-                while (i < child_size)
-                {
-                    struct pid_close_info info = { child_pid_list[i] };
-                    EnumWindows(pid_enum_proc, (LPARAM)&info);
-                    taskkill_message_printfW(STRING_CLOSE_CHILD, child_pid_list[i], parent_pid);
-                    i++;
-                }
-
-                HeapFree(GetProcessHeap(), 0, child_pid_list);
+                send_close_messages_tree(pid);
             }
 
             get_process_name_from_pid(pid, process_name, MAX_PATH);
@@ -351,6 +362,38 @@ static int send_close_messages(void)
 
     HeapFree(GetProcessHeap(), 0, pid_list);
     return status_code;
+}
+
+static void terminate_process_tree(DWORD ppid)
+{
+    DWORD child_size = 0, index = 0;
+    DWORD* child_pid_list = find_child_pid(ppid, &child_size);
+
+    // Use recursion to browse all child processes
+    while (index < child_size)
+    {
+        terminate_process_tree(child_pid_list[index]);
+        HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, child_pid_list[index]);
+        if (!process)
+        {
+            index++;
+            continue;
+        }
+
+        if (!TerminateProcess(process, 0))
+        {
+            taskkill_message_printfW(STRING_TERM_CHILD_FAILED, child_pid_list[index], ppid);
+            CloseHandle(process);
+            index++;
+            continue;
+        }
+
+        taskkill_message_printfW(STRING_TERM_CHILD, child_pid_list[index], ppid);
+        CloseHandle(process);
+        index++;
+    }
+
+    HeapFree(GetProcessHeap(), 0, child_pid_list);
 }
 
 static int terminate_processes(void)
@@ -434,32 +477,7 @@ static int terminate_processes(void)
             // Terminate child first
             if (kill_child_processes)
             {
-                DWORD child_size = 0, index = 0, parent_pid = pid;
-                DWORD* child_pid_list = find_child_pid(parent_pid, &child_size);
-
-                while (index < child_size)
-                {
-                    process = OpenProcess(PROCESS_TERMINATE, FALSE, child_pid_list[index]);
-                    if (!process)
-                    {
-                        index++;
-                        continue;
-                    }
-
-                    if (!TerminateProcess(process, 0))
-                    {
-                        taskkill_message_printfW(STRING_TERM_CHILD_FAILED, child_pid_list[index], parent_pid);
-                        CloseHandle(process);
-                        index++;
-                        continue;
-                    }
-
-                    taskkill_message_printfW(STRING_TERM_CHILD, child_pid_list[index], parent_pid);
-                    CloseHandle(process);
-                    index++;
-                }
-
-                HeapFree(GetProcessHeap(), 0, child_pid_list);
+                terminate_process_tree(pid);
             }
 
             process = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
