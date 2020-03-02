@@ -216,25 +216,21 @@ static BOOL get_pid_creation_time(DWORD pid, FILETIME *time)
 {
     HANDLE process = INVALID_HANDLE_VALUE;
     FILETIME t1 = { 0 }, t2 = { 0 }, t3 = { 0 };
-    BOOL result = TRUE;
 
     process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
     if (!process)
     {
-        result = FALSE;
+        return FALSE;
     }
 
     if (!GetProcessTimes(process, time, &t1, &t2, &t3))
     {
-        result = FALSE;
-    }
-
-    if (process != INVALID_HANDLE_VALUE || !process)
-    {
         CloseHandle(process);
+        return FALSE;
     }
 
-    return result;
+    CloseHandle(process);
+    return TRUE;
 }
 
 static void send_close_messages_tree(DWORD ppid)
@@ -257,7 +253,8 @@ static void send_close_messages_tree(DWORD ppid)
             FILETIME child_creation_time = { 0 };
             struct pid_close_info info = { pe.th32ProcessID };
 
-            if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time)) {
+            if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time))
+            {
                 continue;
             }
 
@@ -405,7 +402,8 @@ static void terminate_process_tree(DWORD ppid)
         do {
             FILETIME child_creation_time = { 0 };
 
-            if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time)) {
+            if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time))
+            {
                 continue;
             }
 
