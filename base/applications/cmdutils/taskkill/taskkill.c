@@ -298,7 +298,7 @@ static int send_close_messages(void)
         WCHAR *p = task_list[i];
         BOOL is_numeric = TRUE;
         DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
-        DWORD pkill_size = 0;
+        DWORD pkill_size = 0, index = 0;
 
         if (!pkill_list)
             return 2;
@@ -325,7 +325,6 @@ static int send_close_messages(void)
         }
         else
         {
-            DWORD index;
             for (index = 0; index < pid_list_size; index++)
             {
                 WCHAR process_name[MAX_PATH];
@@ -347,7 +346,7 @@ static int send_close_messages(void)
         }
 
         // Try to send close messages to process in `pkill_list`
-        for (DWORD index = 0; index < pkill_size; index++)
+        for (index = 0; index < pkill_size; index++)
         {
             DWORD pid = pkill_list[index];
             WCHAR process_name[MAX_PATH] = { 0 };
@@ -459,7 +458,7 @@ static int terminate_processes(void)
         WCHAR *p = task_list[i];
         BOOL is_numeric = TRUE;
         DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
-        DWORD pkill_size = 0;
+        DWORD pkill_size = 0, index = 0;
 
         if (!pkill_list)
             return 2;
@@ -486,7 +485,6 @@ static int terminate_processes(void)
         }
         else
         {
-            DWORD index;
             for (index = 0; index < pid_list_size; index++)
             {
                 WCHAR process_name[MAX_PATH];
@@ -508,7 +506,7 @@ static int terminate_processes(void)
         }
 
         // Try to terminate to process in `pkill_list`
-        for (DWORD index = 0; index < pkill_size; index++)
+        for (index = 0; index < pkill_size; index++)
         {
             DWORD pid = pkill_list[index];
             WCHAR process_name[MAX_PATH] = { 0 };
