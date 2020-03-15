@@ -278,7 +278,7 @@ static void send_close_messages_tree(DWORD ppid)
 
 static int send_close_messages(void)
 {
-    DWORD *pid_list, pid_list_size;
+    DWORD *pid_list, pid_list_size, *pkill_list;
     DWORD self_pid = GetCurrentProcessId();
     unsigned int i;
     int status_code = 0;
@@ -290,15 +290,17 @@ static int send_close_messages(void)
         return 1;
     }
 
+    pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
+    if (!pkill_list)
+        return 1;
+
     for (i = 0; i < task_count; i++)
     {
         WCHAR *p = task_list[i];
         BOOL is_numeric = TRUE;
-        DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
         DWORD pkill_size = 0, index = 0;
 
-        if (!pkill_list)
-            return 2;
+        memset(pkill_list, 0, pid_list_size * sizeof(DWORD));
 
         /* Determine whether the string is not numeric. */
         while (*p)
@@ -376,10 +378,9 @@ static int send_close_messages(void)
                 }
             }
         }
-
-        HeapFree(GetProcessHeap(), 0, pkill_list);
     }
 
+    HeapFree(GetProcessHeap(), 0, pkill_list);
     HeapFree(GetProcessHeap(), 0, pid_list);
     return status_code;
 }
@@ -399,7 +400,8 @@ static void terminate_process_tree(DWORD ppid)
 
     if (Process32FirstW(h, &pe))
     {
-        do {
+        do
+        {
             FILETIME child_creation_time = { 0 };
 
             if (!get_pid_creation_time(pe.th32ProcessID, &child_creation_time))
@@ -439,7 +441,7 @@ static void terminate_process_tree(DWORD ppid)
 
 static int terminate_processes(void)
 {
-    DWORD* pid_list, pid_list_size;
+    DWORD *pid_list, pid_list_size, *pkill_list;
     DWORD self_pid = GetCurrentProcessId();
     unsigned int i;
     int status_code = 0;
@@ -451,15 +453,17 @@ static int terminate_processes(void)
         return 1;
     }
 
+    pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
+    if (!pkill_list)
+        return 1;
+
     for (i = 0; i < task_count; i++)
     {
         WCHAR *p = task_list[i];
         BOOL is_numeric = TRUE;
-        DWORD *pkill_list = HeapAlloc(GetProcessHeap(), 0, pid_list_size * sizeof(DWORD));
         DWORD pkill_size = 0, index = 0;
 
-        if (!pkill_list)
-            return 2;
+        memset(pkill_list, 0, pid_list_size * sizeof(DWORD));
 
         /* Determine whether the string is not numeric. */
         while (*p)
@@ -549,10 +553,9 @@ static int terminate_processes(void)
             }
             CloseHandle(process);
         }
-
-        HeapFree(GetProcessHeap(), 0, pkill_list);
     }
 
+    HeapFree(GetProcessHeap(), 0, pkill_list);
     HeapFree(GetProcessHeap(), 0, pid_list);
     return status_code;
 }
