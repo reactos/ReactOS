@@ -3,6 +3,7 @@
  *
  * Copyright 2008 Andrew Riedi
  * Copyright 2010 Andrew Nguyen
+ * Copyright 2020 He Yang
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -44,7 +45,7 @@ static WCHAR opPID[] = L"pid";
 static WCHAR opHelp[] = L"?";
 static WCHAR opTerminateChildren[] = L"t";
 
-static PWCHAR opList[] = { opForceTerminate, opImage, opPID, opHelp, opTerminateChildren };
+static PWCHAR opList[] = {opForceTerminate, opImage, opPID, opHelp, opTerminateChildren};
 
 #define OP_PARAM_INVALID -1
 
@@ -610,7 +611,7 @@ static BOOL add_to_task_list(WCHAR *name)
 
 #ifdef __REACTOS__
 
-static int get_argument_type(WCHAR *argument)
+static int get_argument_type(WCHAR* argument)
 {
     int i;
 
@@ -630,7 +631,7 @@ static int get_argument_type(WCHAR *argument)
     return OP_PARAM_INVALID;
 }
 
-static BOOL process_arguments(int argc, WCHAR *argv[])
+static BOOL process_arguments(int argc, WCHAR* argv[])
 {
     BOOL has_im = FALSE, has_pid = FALSE, has_help = FALSE;
 
@@ -756,11 +757,11 @@ static BOOL process_arguments(int argc, WCHAR *argv[])
  * options are detected as parameters when placed after options that accept one. */
 static BOOL process_arguments(int argc, WCHAR *argv[])
 {
-    static const WCHAR opForceTerminate[] = { 'f',0 };
-    static const WCHAR opImage[] = { 'i','m',0 };
-    static const WCHAR opPID[] = { 'p','i','d',0 };
-    static const WCHAR opHelp[] = { '?',0 };
-    static const WCHAR opTerminateChildren[] = { 't',0 };
+    static const WCHAR opForceTerminate[] = {'f',0};
+    static const WCHAR opImage[] = {'i','m',0};
+    static const WCHAR opPID[] = {'p','i','d',0};
+    static const WCHAR opHelp[] = {'?',0};
+    static const WCHAR opTerminateChildren[] = {'t',0};
 
     if (argc > 1)
     {
@@ -782,6 +783,7 @@ static BOOL process_arguments(int argc, WCHAR *argv[])
         for (i = 1; i < argc; i++)
         {
             BOOL got_im = FALSE, got_pid = FALSE;
+
             argdata = argv[i];
             if (*argdata != '/' && *argdata != '-')
                 goto invalid;
