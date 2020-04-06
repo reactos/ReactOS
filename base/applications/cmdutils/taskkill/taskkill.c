@@ -36,6 +36,26 @@ static BOOL kill_child_processes = FALSE;
 static WCHAR **task_list;
 static unsigned int task_count;
 
+#ifdef __REACTOS__
+
+static WCHAR opForceTerminate[] = L"f";
+static WCHAR opImage[] = L"im";
+static WCHAR opPID[] = L"pid";
+static WCHAR opHelp[] = L"?";
+static WCHAR opTerminateChildren[] = L"t";
+
+static PWCHAR opList[] = { opForceTerminate, opImage, opPID, opHelp, opTerminateChildren };
+
+#define OP_PARAM_INVALID -1
+
+#define OP_PARAM_FORCE_TERMINATE 0
+#define OP_PARAM_IMAGE 1
+#define OP_PARAM_PID 2
+#define OP_PARAM_HELP 3
+#define OP_PARAM_TERMINATE_CHILD 4
+
+#endif // __REACTOS__
+
 struct pid_close_info
 {
     DWORD pid;
@@ -588,16 +608,159 @@ static BOOL add_to_task_list(WCHAR *name)
     return TRUE;
 }
 
+#ifdef __REACTOS__
+
+static int get_argument_type(WCHAR *argument)
+{
+    int i;
+
+    if (argument[0] != L'/' && argument[0] != L'-')
+    {
+        return OP_PARAM_INVALID;
+    }
+    argument++;
+
+    for (i = 0; i < _countof(opList); i++)
+    {
+        if (!strcmpiW(opList[i], argument))
+        {
+            return i;
+        }
+    }
+    return OP_PARAM_INVALID;
+}
+
+static BOOL process_arguments(int argc, WCHAR *argv[])
+{
+    BOOL has_im = FALSE, has_pid = FALSE, has_help = FALSE;
+
+    if (argc > 1)
+    {
+        int i;
+        for (i = 1; i < argc; i++)
+        {
+            int argument = get_argument_type(argv[i]);
+
+            switch (argument)
+            {
+            case OP_PARAM_FORCE_TERMINATE:
+            {
+                if (force_termination == TRUE)
+                {
+                    // -f already specified
+                    taskkill_message_printfW(STRING_PARAM_TOO_MUCH, argv[i], 1);
+                    taskkill_message(STRING_USAGE);
+                    return FALSE;
+                }
+                force_termination = TRUE;
+                break;
+            }
+            case OP_PARAM_IMAGE:
+            case OP_PARAM_PID:
+            {
+                if (!argv[i + 1])
+                {
+                    taskkill_message_printfW(STRING_MISSING_PARAM, argv[i]);
+                    taskkill_message(STRING_USAGE);
+                    return FALSE;
+                }
+
+                if (argument == OP_PARAM_IMAGE)
+                    has_im = TRUE;
+                if (argument == OP_PARAM_PID)
+                    has_pid = TRUE;
+
+                if (has_im && has_pid)
+                {
+                    taskkill_message(STRING_MUTUAL_EXCLUSIVE);
+                    taskkill_message(STRING_USAGE);
+                    return FALSE;
+                }
+
+                if (get_argument_type(argv[i + 1]) != OP_PARAM_INVALID)
+                {
+                    taskkill_message_printfW(STRING_MISSING_PARAM, argv[i]);
+                    taskkill_message(STRING_USAGE);
+                    return FALSE;
+                }
+
+                if (!add_to_task_list(argv[++i])) // add next parameters to task_list
+                    return FALSE;
+
+                break;
+            }
+            case OP_PARAM_HELP:
+            {
+                if (has_help == TRUE)
+                {
+                    // -? already specified
+                    taskkill_message_printfW(STRING_PARAM_TOO_MUCH, argv[i], 1);
+                    taskkill_message(STRING_USAGE);
+                    return FALSE;
+                }
+                has_help = TRUE;
+                break;
+            }
+            case OP_PARAM_TERMINATE_CHILD:
+            {
+                if (kill_child_processes == TRUE)
+                {
+                    // -t already specified
+                    taskkill_message_printfW(STRING_PARAM_TOO_MUCH, argv[i], 1);
+                    taskkill_message(STRING_USAGE);
+                    return FALSE;
+                }
+                kill_child_processes = TRUE;
+                break;
+            }
+            case OP_PARAM_INVALID:
+            default:
+            {
+                taskkill_message(STRING_INVALID_OPTION);
+                taskkill_message(STRING_USAGE);
+                return FALSE;
+            }
+            }
+        }
+    }
+
+    if (has_help)
+    {
+        if (argc > 2) // any parameters other than -? is specified
+        {
+            taskkill_message(STRING_INVALID_SYNTAX);
+            taskkill_message(STRING_USAGE);
+            return FALSE;
+        }
+        else
+        {
+            taskkill_message(STRING_USAGE);
+            exit(0);
+        }
+    }
+    else if ((!has_im) && (!has_pid)) // has_help == FALSE
+    {
+        // both has_im and has_pid are missing (maybe -fi option is missing too, if implemented later)
+        taskkill_message(STRING_MISSING_OPTION);
+        taskkill_message(STRING_USAGE);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+#else
+
 /* FIXME Argument processing does not match behavior observed on Windows.
  * Stringent argument counting and processing is performed, and unrecognized
  * options are detected as parameters when placed after options that accept one. */
 static BOOL process_arguments(int argc, WCHAR *argv[])
 {
-    static const WCHAR opForceTerminate[] = {'f',0};
-    static const WCHAR opImage[] = {'i','m',0};
-    static const WCHAR opPID[] = {'p','i','d',0};
-    static const WCHAR opHelp[] = {'?',0};
-    static const WCHAR opTerminateChildren[] = {'t',0};
+    static const WCHAR opForceTerminate[] = { 'f',0 };
+    static const WCHAR opImage[] = { 'i','m',0 };
+    static const WCHAR opPID[] = { 'p','i','d',0 };
+    static const WCHAR opHelp[] = { '?',0 };
+    static const WCHAR opTerminateChildren[] = { 't',0 };
 
     if (argc > 1)
     {
@@ -672,6 +835,8 @@ static BOOL process_arguments(int argc, WCHAR *argv[])
 
     return TRUE;
 }
+
+#endif // __REACTOS__
 
 int wmain(int argc, WCHAR *argv[])
 {
