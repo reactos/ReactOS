@@ -287,6 +287,52 @@ SetDeviceStatus(
 
 
 static
+CONFIGRET
+DisableDeviceInstance(
+    _In_ LPWSTR pszDeviceInstance,
+    _Inout_opt_ PPNP_VETO_TYPE pVetoType,
+    _Inout_opt_ LPWSTR pszVetoName,
+    _In_ DWORD ulNameLength)
+{
+    PLUGPLAY_CONTROL_QUERY_REMOVE_DATA QueryRemoveData;
+    CONFIGRET ret = CR_SUCCESS;
+    NTSTATUS Status;
+
+    DPRINT1("DisableDeviceInstance(%S %p %p %lu)\n",
+            pszDeviceInstance, pVetoType, pszVetoName, ulNameLength);
+
+    RtlInitUnicodeString(&QueryRemoveData.DeviceInstance,
+                         pszDeviceInstance);
+
+    QueryRemoveData.Flags = 0;
+    QueryRemoveData.VetoType = 0;
+    QueryRemoveData.VetoName = pszVetoName;
+    QueryRemoveData.NameLength = ulNameLength;
+
+    Status = NtPlugPlayControl(PlugPlayControlQueryAndRemoveDevice,
+                               &QueryRemoveData,
+                               sizeof(PLUGPLAY_CONTROL_QUERY_REMOVE_DATA));
+    if (Status == STATUS_NO_SUCH_DEVICE)
+    {
+        ret = CR_INVALID_DEVNODE;
+    }
+    else if (Status == STATUS_PLUGPLAY_QUERY_VETOED)
+    {
+        if (pVetoType != NULL)
+            *pVetoType = QueryRemoveData.VetoType;
+
+        ret = CR_REMOVE_VETOED;
+    }
+    else if (!NT_SUCCESS(Status))
+    {
+        ret = NtStatusToCrError(Status);
+    }
+
+    return ret;
+}
+
+
+static
 BOOL
 IsValidDeviceInstanceID(
     _In_ PWSTR pszDeviceInstanceID)
@@ -2250,7 +2296,7 @@ PNP_DeleteClassKey(
 
     UNREFERENCED_PARAMETER(hBinding);
 
-    DPRINT("PNP_GetClassName(%p %S 0x%08lx)\n",
+    DPRINT("PNP_DeleteClassKey(%p %S 0x%08lx)\n",
            hBinding, pszClassGuid, ulFlags);
 
     if (ulFlags & CM_DELETE_CLASS_SUBKEYS)
@@ -2304,6 +2350,9 @@ PNP_GetInterfaceDeviceList(
 
     UNREFERENCED_PARAMETER(hBinding);
 
+    DPRINT("PNP_GetInterfaceDeviceList(%p %p %S %p %p 0x%08lx)\n",
+           hBinding, InterfaceGuid, pszDeviceID, Buffer, pulLength, ulFlags);
+
     if (!IsValidDeviceInstanceID(pszDeviceID))
         return CR_INVALID_DEVINST;
 
@@ -2327,7 +2376,7 @@ PNP_GetInterfaceDeviceList(
         ret = NtStatusToCrError(Status);
     }
 
-    DPRINT("PNP_GetInterfaceDeviceListSize() done (returns %lx)\n", ret);
+    DPRINT("PNP_GetInterfaceDeviceList() done (returns %lx)\n", ret);
     return ret;
 }
 
@@ -2348,7 +2397,8 @@ PNP_GetInterfaceDeviceListSize(
 
     UNREFERENCED_PARAMETER(hBinding);
 
-    DPRINT("PNP_GetInterfaceDeviceListSize() called\n");
+    DPRINT("PNP_GetInterfaceDeviceListSize(%p %p %p %S 0x%08lx)\n",
+           hBinding, pulLen, InterfaceGuid, pszDeviceID, ulFlags);
 
     if (!IsValidDeviceInstanceID(pszDeviceID))
         return CR_INVALID_DEVINST;
@@ -2866,9 +2916,9 @@ SetupDeviceInstance(
 
     if (ulStatus & DN_HAS_PROBLEM)
     {
-       ret = ClearDeviceStatus(pszDeviceInstance,
-                               DN_HAS_PROBLEM,
-                               ulProblem);
+        ret = ClearDeviceStatus(pszDeviceInstance,
+                                DN_HAS_PROBLEM,
+                                ulProblem);
     }
 
     if (ret != CR_SUCCESS)
@@ -3034,9 +3084,24 @@ PNP_DisableDevInst(
     DWORD ulNameLength,
     DWORD ulFlags)
 {
-    UNIMPLEMENTED;
-    return CR_CALL_NOT_IMPLEMENTED;
+    UNREFERENCED_PARAMETER(hBinding);
+
+    DPRINT1("PNP_DisableDevInst(%p %S %p %p %lu 0x%08lx)\n",
+            hBinding, pDeviceID, pVetoType, pszVetoName, ulNameLength, ulFlags);
+
+    if (ulFlags & ~CM_DISABLE_BITS)
+        return CR_INVALID_FLAG;
+
+    if (!IsValidDeviceInstanceID(pDeviceID) ||
+        IsRootDeviceInstanceID(pDeviceID))
+        return CR_INVALID_DEVINST;
+
+    return DisableDeviceInstance(pDeviceID,
+                                 pVetoType,
+                                 pszVetoName,
+                                 ulNameLength);
 }
+
 
 /* Function 33 */
 DWORD
@@ -3111,10 +3176,8 @@ PNP_AddID(
 
     UNREFERENCED_PARAMETER(hBinding);
 
-    DPRINT("PNP_AddID() called\n");
-    DPRINT("  DeviceInstance: %S\n", pszDeviceID);
-    DPRINT("  DeviceId: %S\n", pszID);
-    DPRINT("  Flags: %lx\n", ulFlags);
+    DPRINT("PNP_AddID(%p %S %S 0x%08lx)\n",
+           hBinding, pszDeviceID, pszID, ulFlags);
 
     if (RegOpenKeyExW(hEnumKey,
                       pszDeviceID,
@@ -3337,7 +3400,8 @@ PNP_IsDockStationPresent(
 
     UNREFERENCED_PARAMETER(hBinding);
 
-    DPRINT1("PNP_IsDockStationPresent() called\n");
+    DPRINT1("PNP_IsDockStationPresent(%p %p)\n",
+            hBinding, Present);
 
     *Present = FALSE;
 

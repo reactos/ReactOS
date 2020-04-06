@@ -240,14 +240,14 @@ ConsoleFreeUnicodeString(IN PUNICODE_STRING UnicodeString)
 }
 
 VOID
-ConioPause(PCONSRV_CONSOLE Console, UINT Flags)
+ConioPause(PCONSRV_CONSOLE Console, UCHAR Flags)
 {
     Console->PauseFlags |= Flags;
     ConDrvPause((PCONSOLE)Console);
 }
 
 VOID
-ConioUnpause(PCONSRV_CONSOLE Console, UINT Flags)
+ConioUnpause(PCONSRV_CONSOLE Console, UCHAR Flags)
 {
     Console->PauseFlags &= ~Flags;
 
@@ -697,9 +697,10 @@ ConSrvInitConsole(OUT PHANDLE NewConsoleHandle,
     /* Initialize the alias and history buffers */
     Console->Aliases = NULL;
     InitializeListHead(&Console->HistoryBuffers);
-    Console->HistoryBufferSize      = ConsoleInfo->HistoryBufferSize;
-    Console->NumberOfHistoryBuffers = ConsoleInfo->NumberOfHistoryBuffers;
-    Console->HistoryNoDup           = ConsoleInfo->HistoryNoDup;
+    Console->NumberOfHistoryBuffers = 0;
+    Console->MaxNumberOfHistoryBuffers = ConsoleInfo->NumberOfHistoryBuffers;
+    Console->HistoryBufferSize = ConsoleInfo->HistoryBufferSize;
+    Console->HistoryNoDup      = ConsoleInfo->HistoryNoDup;
 
     /* Initialize the Input Line Discipline */
     Console->LineBuffer = NULL;

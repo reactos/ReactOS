@@ -247,7 +247,7 @@ RtlConvertUlongToLuid(
 //
 // This macro does nothing in user mode
 //
-#define RTL_PAGED_CODE NOP_FUNCTION
+#define RTL_PAGED_CODE()
 
 #endif
 
@@ -2434,6 +2434,22 @@ RtlFreeBuffer(
     Buffer->Buffer = Buffer->StaticBuffer;
     Buffer->Size = Buffer->StaticSize;
 }
+
+NTSYSAPI
+VOID
+NTAPI
+RtlRunEncodeUnicodeString(
+    _Inout_ PUCHAR Hash,
+    _Inout_ PUNICODE_STRING String
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlRunDecodeUnicodeString(
+    _In_ UCHAR Hash,
+    _Inout_ PUNICODE_STRING String
+);
 
 #endif /* NTOS_MODE_USER */
 
