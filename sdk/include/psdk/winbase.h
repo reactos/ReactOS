@@ -779,6 +779,12 @@ typedef struct _DEBUG_EVENT {
 	} u;
 } DEBUG_EVENT,*LPDEBUG_EVENT;
 
+#ifndef MIDL_PASS
+typedef PCONTEXT LPCONTEXT;
+typedef PEXCEPTION_RECORD LPEXCEPTION_RECORD;
+typedef PEXCEPTION_POINTERS LPEXCEPTION_POINTERS;
+#endif
+
 typedef struct _OVERLAPPED {
 	ULONG_PTR Internal;
 	ULONG_PTR InternalHigh;
@@ -1145,7 +1151,7 @@ typedef struct _SYSTEM_POWER_STATUS {
 	BYTE ACLineStatus;
 	BYTE BatteryFlag;
 	BYTE BatteryLifePercent;
-	BYTE Reserved1;
+	BYTE SystemStatusFlag;
 	DWORD BatteryLifeTime;
 	DWORD BatteryFullLifeTime;
 } SYSTEM_POWER_STATUS,*LPSYSTEM_POWER_STATUS;

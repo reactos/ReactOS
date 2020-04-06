@@ -1236,7 +1236,7 @@ DetectPS2Mouse(PCONFIGURATION_COMPONENT_DATA BusKey)
 }
 
 
-// Implemented in i386vid.c, returns the VESA version
+// Implemented in pcvesa.c, returns the VESA version
 USHORT  BiosIsVesaSupported(VOID);
 BOOLEAN BiosIsVesaDdcSupported(VOID);
 BOOLEAN BiosVesaReadEdid(VOID);
@@ -1373,7 +1373,8 @@ PcHwDetect(VOID)
 
     /* Create the 'System' key */
     FldrCreateSystemKey(&SystemKey);
-    // TODO: Discover and set the machine type as the Component->Identifier
+    // TODO: Discover and set the other machine types
+    FldrSetIdentifier(SystemKey, "AT/AT COMPATIBLE");
 
     GetHarddiskConfigurationData = PcGetHarddiskConfigurationData;
     FindPciBios = PcFindPciBios;

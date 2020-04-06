@@ -161,6 +161,8 @@ else()
         add_definitions(-D_X86_ -D__i386__ -Di386)
         if(SARCH STREQUAL "xbox")
             add_definitions(-DSARCH_XBOX)
+        elseif(SARCH STREQUAL "pc98")
+            add_definitions(-DSARCH_PC98)
         endif()
     elseif(ARCH STREQUAL "amd64")
         add_definitions(-D_M_AMD64 -D_AMD64_ -D__x86_64__ -D_WIN64)
@@ -247,7 +249,11 @@ else()
     endif()
 
     # For MSVC builds, this puts all debug symbols file in the same directory.
-    set(CMAKE_PDB_OUTPUT_DIRECTORY "${REACTOS_BINARY_DIR}/msvc_pdb")
+    if (MSVC)
+        set(CMAKE_PDB_OUTPUT_DIRECTORY "${REACTOS_BINARY_DIR}/msvc_pdb")
+    elseif(SEPARATE_DBG)
+        set(CMAKE_PDB_OUTPUT_DIRECTORY "${REACTOS_BINARY_DIR}/symbols")
+    endif()
 
     #begin with boot so reactos_cab target is defined before all other modules
     add_subdirectory(boot)
