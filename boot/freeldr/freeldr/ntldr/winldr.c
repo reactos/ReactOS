@@ -26,6 +26,9 @@ extern void WinLdrSetupEms(IN PCHAR BootOptions);
 
 PLOADER_SYSTEM_BLOCK WinLdrSystemBlock;
 
+#define RT_VERSION 0x10
+#define VS_FFI_SIGNATURE 0xfeef04bd
+
 // debug stuff
 VOID DumpMemoryAllocMap(VOID);
 
@@ -415,23 +418,205 @@ WinLdrLoadModule(PCSTR ModuleName,
     return PhysicalBase;
 }
 
-USHORT
-WinLdrDetectVersion(VOID)
+typedef struct _VS_FIXEDFILEINFO
 {
-    LONG rc;
-    HKEY hKey;
+    ULONG dwSignature;
+    ULONG dwStrucVersion;
+    ULONG dwFileVersionMS;
+    ULONG dwFileVersionLS;
+    ULONG dwProductVersionMS;
+    ULONG dwProductVersionLS;
+    ULONG dwFileFlagsMask;
+    ULONG dwFileFlags;
+    ULONG dwFileOS;
+    ULONG dwFileType;
+    ULONG dwFileSubtype;
+    ULONG dwFileDateMS;
+    ULONG dwFileDateLS;
+} VS_FIXEDFILEINFO, *PVS_FIXEDFILEINFO;
 
-    rc = RegOpenKey(NULL,
-                    L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server",
-                    &hKey);
-    if (rc != ERROR_SUCCESS)
+typedef struct _VS_VERSION_INFO
+{
+    USHORT wLength;
+    USHORT wValueLength;
+    USHORT wType;
+    WCHAR szKey[15];
+    USHORT Padding1;
+    VS_FIXEDFILEINFO Value;
+} VS_VERSION_INFO, *PVS_VERSION_INFO;
+
+static USHORT WinLdrParseVersionBlock(PIMAGE_RESOURCE_DIRECTORY_ENTRY DirEntry,
+                                      PVOID ImageAddress,
+                                      ULONG ImageSize,
+                                      PVOID SectionAddress,
+                                      ULONG SectionSize)
+{
+    PIMAGE_RESOURCE_DATA_ENTRY DataEntry;
+    PVS_VERSION_INFO Data;
+
+    static const WCHAR Key[] = L"VS_VERSION_INFO";
+
+    if (DirEntry->OffsetToDirectory > SectionSize)
+        return 0;
+
+    if (DirEntry->OffsetToDirectory + sizeof(IMAGE_RESOURCE_DATA_ENTRY) > SectionSize)
+        return 0;
+
+    DataEntry = (PIMAGE_RESOURCE_DATA_ENTRY)((char*)SectionAddress + DirEntry->OffsetToDirectory);
+
+    if (DataEntry->OffsetToData + DataEntry->Size > ImageSize)
+        return 0;
+
+    if (DataEntry->Size < sizeof(VS_VERSION_INFO))
+        return 0;
+
+    Data = (PVS_VERSION_INFO)((char*)ImageAddress + DataEntry->OffsetToData);
+
+    if (Data->wLength > DataEntry->Size)
+        return 0;
+
+    if (Data->wValueLength < sizeof(VS_FIXEDFILEINFO))
+        return 0;
+
+    if (memcmp(Data->szKey, Key, sizeof(Key)))
+        return 0;
+
+    if (Data->Value.dwSignature != VS_FFI_SIGNATURE)
+        return 0;
+
+    TRACE("version %08x\n", Data->Value.dwFileVersionMS);
+
+    return (Data->Value.dwFileVersionMS & 0xff0000) >> 8 | (Data->Value.dwFileVersionMS & 0xff);
+}
+
+static
+USHORT
+WinLdrSearchRsrcVersions(PIMAGE_RESOURCE_DIRECTORY_ENTRY DirEntry,
+                         PVOID ImageAddress,
+                         ULONG ImageSize,
+                         PVOID SectionAddress,
+                         ULONG SectionSize,
+                         BOOLEAN NameDir)
+{
+    PIMAGE_RESOURCE_DIRECTORY RsrcDir;
+    PIMAGE_RESOURCE_DIRECTORY_ENTRY DirEntries;
+    ULONG i;
+
+    if (DirEntry->OffsetToDirectory > SectionSize)
+        return 0;
+
+    if (DirEntry->OffsetToDirectory + sizeof(IMAGE_RESOURCE_DIRECTORY) > SectionSize)
+        return 0;
+
+    RsrcDir = (PIMAGE_RESOURCE_DIRECTORY)((char*)SectionAddress + DirEntry->OffsetToDirectory);
+
+    if (DirEntry->OffsetToDirectory + sizeof(IMAGE_RESOURCE_DIRECTORY) +
+        ((RsrcDir->NumberOfNamedEntries + RsrcDir->NumberOfIdEntries) * sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)) > SectionSize)
+        return 0;
+
+    DirEntries = (PIMAGE_RESOURCE_DIRECTORY_ENTRY)((char*)SectionAddress +
+                                                   DirEntry->OffsetToDirectory +
+                                                   sizeof(IMAGE_RESOURCE_DIRECTORY));
+
+    for (i = 0; i < RsrcDir->NumberOfNamedEntries + RsrcDir->NumberOfIdEntries; i++)
     {
-        /* Key doesn't exist; assume NT 4.0 */
-        return _WIN32_WINNT_NT4;
+        ULONG Version;
+
+        if (NameDir)
+            Version = WinLdrSearchRsrcVersions(&DirEntries[i], ImageAddress, ImageSize,
+                                               SectionAddress, SectionSize, FALSE);
+        else
+            Version = WinLdrParseVersionBlock(&DirEntries[i], ImageAddress, ImageSize,
+                                              SectionAddress, SectionSize);
+
+        if (Version != 0)
+            return Version;
     }
 
-    /* We may here want to read the value of ProductVersion */
-    return _WIN32_WINNT_WS03;
+    return 0;
+}
+
+static
+USHORT
+WinLdrFindKernelVersion(PVOID ImageAddress,
+                        ULONG ImageSize,
+                        PVOID SectionAddress,
+                        ULONG SectionSize)
+{
+    PIMAGE_RESOURCE_DIRECTORY RsrcDir;
+    PIMAGE_RESOURCE_DIRECTORY_ENTRY DirEntries;
+    ULONG i;
+
+    if (SectionSize < sizeof(IMAGE_RESOURCE_DIRECTORY))
+        return 0;
+
+    RsrcDir = SectionAddress;
+
+    if (SectionSize < sizeof(IMAGE_RESOURCE_DIRECTORY) +
+        ((RsrcDir->NumberOfNamedEntries + RsrcDir->NumberOfIdEntries) * sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)))
+        return 0;
+
+    DirEntries = (PIMAGE_RESOURCE_DIRECTORY_ENTRY)((char*)SectionAddress + sizeof(IMAGE_RESOURCE_DIRECTORY));
+
+    for (i = 0; i < RsrcDir->NumberOfIdEntries; i++)
+    {
+        if (DirEntries[RsrcDir->NumberOfNamedEntries + i].Id == RT_VERSION)
+        {
+            ULONG Version;
+
+            Version = WinLdrSearchRsrcVersions(&DirEntries[RsrcDir->NumberOfNamedEntries + i],
+                                               ImageAddress,
+                                               ImageSize,
+                                               SectionAddress,
+                                               SectionSize,
+                                               TRUE);
+
+            if (Version != 0)
+                return Version;
+        }
+    }
+
+    return 0;
+}
+
+USHORT
+WinLdrDetectVersion(PVOID KernelAddress)
+{
+    PIMAGE_NT_HEADERS NtHeaders;
+    PIMAGE_SECTION_HEADER SectionHeader;
+    ULONG i, NumberOfSections;
+
+    NtHeaders = RtlImageNtHeader(KernelAddress);
+    if (!NtHeaders)
+    {
+        ERR("No NT header found in kernel\n");
+        UiMessageBox("Error: No NT header found in kernel\n");
+        return 0;
+    }
+
+    NumberOfSections = NtHeaders->FileHeader.NumberOfSections;
+    SectionHeader = IMAGE_FIRST_SECTION(NtHeaders);
+
+    /* Look for resource sections in kernel */
+    for (i = 0; i < NumberOfSections; i++)
+    {
+        if (!strcmp((char*)SectionHeader->Name, ".rsrc"))
+        {
+            USHORT Version;
+
+            Version = WinLdrFindKernelVersion(KernelAddress,
+                                              NtHeaders->OptionalHeader.SizeOfImage,
+                                              (char*)KernelAddress + SectionHeader->VirtualAddress,
+                                              SectionHeader->Misc.VirtualSize);
+
+            if (Version != 0)
+                return Version;
+        }
+
+        SectionHeader++;
+    }
+
+    return 0;
 }
 
 static
@@ -443,12 +628,12 @@ LoadModule(
     IN PCCH ImportName, // BaseDllName
     IN TYPE_OF_MEMORY MemoryType,
     OUT PLDR_DATA_TABLE_ENTRY *Dte,
-    IN ULONG Percentage)
+    IN ULONG Percentage,
+    IN PVOID BaseAddress)
 {
     BOOLEAN Success;
     CHAR FullFileName[MAX_PATH];
     CHAR ProgressString[256];
-    PVOID BaseAddress = NULL;
 
     UiDrawBackdrop();
     RtlStringCbPrintfA(ProgressString, sizeof(ProgressString), "Loading %s...", File);
@@ -457,13 +642,16 @@ LoadModule(
     RtlStringCbCopyA(FullFileName, sizeof(FullFileName), Path);
     RtlStringCbCatA(FullFileName, sizeof(FullFileName), File);
 
-    Success = PeLdrLoadImage(FullFileName, MemoryType, &BaseAddress);
-    if (!Success)
+    if (!BaseAddress)
     {
-        TRACE("Loading %s failed\n", File);
-        return FALSE;
+        Success = PeLdrLoadImage(FullFileName, MemoryType, &BaseAddress);
+        if (!Success)
+        {
+            TRACE("Loading %s failed\n", File);
+            return FALSE;
+        }
+        TRACE("%s loaded successfully at %p\n", File, BaseAddress);
     }
-    TRACE("%s loaded successfully at %p\n", File, BaseAddress);
 
     /*
      * Cheat about the base DLL name if we are loading
@@ -485,7 +673,8 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
                 IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock,
                 IN PCSTR BootOptions,
                 IN PCSTR BootPath,
-                IN OUT PLDR_DATA_TABLE_ENTRY* KernelDTE)
+                IN OUT PLDR_DATA_TABLE_ENTRY* KernelDTE,
+                IN PVOID KernelAddress)
 {
     BOOLEAN Success;
     PCSTR Options;
@@ -555,10 +744,12 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
     TRACE("HAL file = '%s' ; Kernel file = '%s'\n", HalFileName, KernelFileName);
 
     /* Load the Kernel */
-    LoadModule(LoaderBlock, DirPath, KernelFileName, "ntoskrnl.exe", LoaderSystemCode, KernelDTE, 30);
+    LoadModule(LoaderBlock, DirPath, KernelFileName, "ntoskrnl.exe", LoaderSystemCode,
+               KernelDTE, 30, KernelAddress);
 
     /* Load the HAL */
-    LoadModule(LoaderBlock, DirPath, HalFileName, "hal.dll", LoaderHalCode, &HalDTE, 45);
+    LoadModule(LoaderBlock, DirPath, HalFileName, "hal.dll", LoaderHalCode, &HalDTE,
+               45, NULL);
 
     /* Load the Kernel Debugger Transport DLL */
     if (OperatingSystemVersion > _WIN32_WINNT_WIN2K)
@@ -641,7 +832,8 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
              * Load the transport DLL. Override the base DLL name of the
              * loaded transport DLL to the default "KDCOM.DLL" name.
              */
-            LoadModule(LoaderBlock, DirPath, KdTransportDllName, "kdcom.dll", LoaderSystemCode, &KdComDTE, 60);
+            LoadModule(LoaderBlock, DirPath, KdTransportDllName, "kdcom.dll", LoaderSystemCode,
+                       &KdComDTE, 60, NULL);
         }
     }
 
@@ -718,6 +910,60 @@ WinLdrInitErrataInf(
     return TRUE;
 }
 
+BOOLEAN
+LoadKernel(
+    IN PCHAR BootOptions,
+    IN PCHAR BootPath,
+    OUT PVOID KernelAddress)
+{
+    PCHAR Options;
+    CHAR FileName[MAX_PATH];
+    CHAR ArcFileName[MAX_PATH];
+
+    RtlStringCbCopyA(FileName, sizeof(FileName), "ntoskrnl.exe");
+
+    /* Find any "/KERNEL=" switch in the boot options */
+    Options = BootOptions;
+    while (Options)
+    {
+        /* Skip possible initial whitespace */
+        Options += strspn(Options, " \t");
+
+        /* Check whether a new option starts and it is either HAL or KERNEL */
+        if (*Options != '/' || (++Options,
+            !(_strnicmp(Options, "KERNEL=", 7) == 0)) )
+        {
+            /* Search for another whitespace */
+            Options = strpbrk(Options, " \t");
+            continue;
+        }
+        else
+        {
+            size_t i = strcspn(Options, " \t"); /* Skip whitespace */
+            if (i == 0)
+            {
+                /* Use the default values */
+                break;
+            }
+
+            if (_strnicmp(Options, "KERNEL=", 7) == 0)
+            {
+                Options += 7; i -= 7;
+                RtlStringCbCopyNA(FileName, sizeof(FileName), Options, i);
+                _strupr(FileName);
+            }
+        }
+    }
+
+    TRACE("Kernel file = '%s'\n", FileName);
+
+    RtlStringCbCopyA(ArcFileName, sizeof(ArcFileName), BootPath);
+    RtlStringCbCatA(ArcFileName, sizeof(ArcFileName), "system32\\");
+    RtlStringCbCatA(ArcFileName, sizeof(ArcFileName), FileName);
+
+    return PeLdrLoadImage(ArcFileName, LoaderSystemCode, KernelAddress);
+}
+
 ARC_STATUS
 LoadAndBootWindows(
     IN ULONG Argc,
@@ -734,30 +980,7 @@ LoadAndBootWindows(
     CHAR BootPath[MAX_PATH];
     CHAR FileName[MAX_PATH];
     CHAR BootOptions[256];
-
-    /* Retrieve the (mandatory) boot type */
-    ArgValue = GetArgumentValue(Argc, Argv, "BootType");
-    if (!ArgValue || !*ArgValue)
-    {
-        ERR("No 'BootType' value, aborting!\n");
-        return EINVAL;
-    }
-
-    /* Convert it to an OS version */
-    if (_stricmp(ArgValue, "Windows") == 0 ||
-        _stricmp(ArgValue, "Windows2003") == 0)
-    {
-        OperatingSystemVersion = _WIN32_WINNT_WS03;
-    }
-    else if (_stricmp(ArgValue, "WindowsNT40") == 0)
-    {
-        OperatingSystemVersion = _WIN32_WINNT_NT4;
-    }
-    else
-    {
-        ERR("Unknown 'BootType' value '%s', aborting!\n", ArgValue);
-        return EINVAL;
-    }
+    PVOID KernelAddress;
 
     /* Retrieve the (mandatory) system partition */
     SystemPartition = GetArgumentValue(Argc, Argv, "SystemPartition");
@@ -866,6 +1089,20 @@ LoadAndBootWindows(
     /* Let user know we started loading */
     //UiDrawStatusText("Loading...");
 
+    if (!LoadKernel(BootOptions, BootPath, &KernelAddress))
+    {
+        UiMessageBox("Failed to load kernel");
+        return EINVAL;
+    }
+
+    /* Find the version number from the kernel */
+    OperatingSystemVersion = WinLdrDetectVersion(KernelAddress);
+    if (OperatingSystemVersion == 0)
+    {
+        UiMessageBox("Could not detect kernel version");
+        return EINVAL;
+    }
+
     /* Allocate and minimally-initialize the Loader Parameter Block */
     AllocateAndInitLPB(OperatingSystemVersion, &LoaderBlock);
 
@@ -878,9 +1115,6 @@ LoadAndBootWindows(
     if (!Success)
         return ENOEXEC;
 
-    /* Fixup the version number using data from the registry */
-    if (OperatingSystemVersion == 0)
-        OperatingSystemVersion = WinLdrDetectVersion();
     LoaderBlock->Extension->MajorVersion = (OperatingSystemVersion & 0xFF00) >> 8;
     LoaderBlock->Extension->MinorVersion = (OperatingSystemVersion & 0xFF);
 
@@ -901,7 +1135,8 @@ LoadAndBootWindows(
                                     LoaderBlock,
                                     BootOptions,
                                     BootPath,
-                                    FALSE);
+                                    FALSE,
+                                    KernelAddress);
 }
 
 ARC_STATUS
@@ -910,7 +1145,8 @@ LoadAndBootWindowsCommon(
     PLOADER_PARAMETER_BLOCK LoaderBlock,
     PCSTR BootOptions,
     PCSTR BootPath,
-    BOOLEAN Setup)
+    BOOLEAN Setup,
+    PVOID KernelAddress)
 {
     PLOADER_PARAMETER_BLOCK LoaderBlockVA;
     BOOLEAN Success;
@@ -940,7 +1176,8 @@ LoadAndBootWindowsCommon(
                               LoaderBlock,
                               BootOptions,
                               BootPath,
-                              &KernelDTE);
+                              &KernelDTE,
+                              KernelAddress);
     if (!Success)
     {
         UiMessageBox("Error loading NTOS core.");
