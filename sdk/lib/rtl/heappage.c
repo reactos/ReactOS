@@ -15,6 +15,7 @@
 
 #include <rtl.h>
 #include <heap.h>
+#include <reactos/verifier.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -1625,7 +1626,12 @@ RtlpPageHeapDestroy(HANDLE HeapPtr)
     /* Check if it's not a process heap */
     if (HeapPtr == RtlGetProcessHeap())
     {
-        DbgBreakPoint();
+        VERIFIER_STOP(APPLICATION_VERIFIER_DESTROY_PROCESS_HEAP,
+                      "attempt to destroy process heap",
+                      HeapPtr, "Heap handle",
+                      0, "",
+                      0, "",
+                      0, "");
         return NULL;
     }
 
