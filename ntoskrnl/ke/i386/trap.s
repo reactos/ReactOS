@@ -17,14 +17,28 @@ MACRO(GENERATE_IDT_STUB, Vector)
 idt _KiUnexpectedInterrupt&Vector, INT_32_DPL0
 ENDM
 
+/*
+ * The INT stub handlers must all have the same size (stored in _KiUnexpectedEntrySize)
+ * in all situations. Therefore, we force using a push instruction with 32-bit operand
+ * and a non-short near jump.
+ */
 MACRO(GENERATE_INT_HANDLER, Vector)
-//.func KiUnexpectedInterrupt&Vector
 _KiUnexpectedInterrupt&Vector:
-    /* This is a push instruction with 8bit operand. Since the instruction
-       sign extends the value to 32 bits, we need to offset it */
-    push (Vector - 128)
-    jmp _KiEndUnexpectedRange@0
-//.endfunc
+#ifdef _USE_ML
+    push dword ptr (&Vector)
+    jmp near ptr _KiEndUnexpectedRange@0
+#else
+    /*
+     * NOTE: GAS does not take the explicit 'dword ptr' / 'near ptr' overrides
+     * into account, and will use e.g. the 8-bit push for values <= 0x7F.
+     * We therefore need to hardcode the explicit instruction opcodes.
+     */
+    .byte HEX(68)  // push dword ptr (&Vector)
+    .long (&Vector)
+    .byte HEX(0E9) // jmp near ptr _KiEndUnexpectedRange@0
+    .long _KiEndUnexpectedRange@0 - 1f
+1:
+#endif
 ENDM
 
 /* GLOBALS *******************************************************************/
@@ -85,6 +99,7 @@ _KiUnexpectedEntrySize:
     .long _KiUnexpectedInterrupt49 - _KiUnexpectedInterrupt48
 
 /******************************************************************************/
+
 .code
 
 PUBLIC _KiStartUnexpectedRange@0
@@ -95,33 +110,63 @@ REPEAT 208
     i = i + 1
 ENDR
 
-TRAP_ENTRY KiTrap00, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap01, KI_PUSH_FAKE_ERROR_CODE
-TASK_ENTRY KiTrap02, KI_NMI
-TRAP_ENTRY KiTrap03, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap04, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap05, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap06, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap07, KI_PUSH_FAKE_ERROR_CODE
-TASK_ENTRY KiTrap08, 0
-TRAP_ENTRY KiTrap09, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap0A, 0
-TRAP_ENTRY KiTrap0B, 0
-TRAP_ENTRY KiTrap0C, 0
-TRAP_ENTRY KiTrap0D, 0
-TRAP_ENTRY KiTrap0E, 0
-TRAP_ENTRY KiTrap0F, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap10, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap11, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiTrap13, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiRaiseSecurityCheckFailure, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiGetTickCount, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiCallbackReturn, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiRaiseAssertion, KI_PUSH_FAKE_ERROR_CODE
-TRAP_ENTRY KiDebugService, KI_PUSH_FAKE_ERROR_CODE
+PUBLIC _KiEndUnexpectedRange@0
+_KiEndUnexpectedRange@0:
+    jmp _KiUnexpectedInterruptTail
+
+
+MACRO(TRAP_ENTRY_EX, Vector, Trap, Flags)
+#ifdef _USE_ML
+.trap_seg&Vector SEGMENT 'CODE' ALIAS(".inthdlr$&Vector")
+#else
+.section .inthdlr$\()\Vector
+#endif
+    TRAP_ENTRY &Trap, &Flags
+#ifdef _USE_ML
+.trap_seg&Vector ENDS
+#endif
+ENDM
+
+MACRO(TASK_ENTRY_EX, Vector, Trap, Flags)
+#ifdef _USE_ML
+.trap_seg&Vector SEGMENT 'CODE' ALIAS(".inthdlr$&Vector")
+#else
+.section .inthdlr$\()\Vector
+#endif
+    TASK_ENTRY &Trap, &Flags
+#ifdef _USE_ML
+.trap_seg&Vector ENDS
+#endif
+ENDM
+
+
+TRAP_ENTRY_EX 00, KiTrap00, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 01, KiTrap01, KI_PUSH_FAKE_ERROR_CODE
+TASK_ENTRY_EX 02, KiTrap02, KI_NMI
+TRAP_ENTRY_EX 03, KiTrap03, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 04, KiTrap04, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 05, KiTrap05, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 06, KiTrap06, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 07, KiTrap07, KI_PUSH_FAKE_ERROR_CODE
+TASK_ENTRY_EX 08, KiTrap08, 0
+TRAP_ENTRY_EX 09, KiTrap09, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 0A, KiTrap0A, 0
+TRAP_ENTRY_EX 0B, KiTrap0B, 0
+TRAP_ENTRY_EX 0C, KiTrap0C, 0
+TRAP_ENTRY_EX 0D_C, KiTrap0D, 0
+TRAP_ENTRY_EX 0E, KiTrap0E, 0
+TRAP_ENTRY_EX 0F, KiTrap0F, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 10, KiTrap10, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 11, KiTrap11, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 13, KiTrap13, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 29, KiRaiseSecurityCheckFailure, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 2A, KiGetTickCount, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 2B, KiCallbackReturn, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 2C, KiRaiseAssertion, KI_PUSH_FAKE_ERROR_CODE
+TRAP_ENTRY_EX 2D, KiDebugService, KI_PUSH_FAKE_ERROR_CODE
 TRAP_ENTRY KiUnexpectedInterruptTail, 0
 
-ALIGN 4
+.align 4
 EXTERN @KiInterruptTemplateHandler@8:PROC
 PUBLIC _KiInterruptTemplate
 _KiInterruptTemplate:
@@ -159,11 +204,6 @@ PUBLIC _KiFastCallEntryWithSingleStep
     KiCallHandler @KiSystemServiceHandler@8
 .ENDP
 
-PUBLIC _KiEndUnexpectedRange@0
-_KiEndUnexpectedRange@0:
-    add dword ptr[esp], 128
-    jmp _KiUnexpectedInterruptTail
-
 
 /* EXIT CODE *****************************************************************/
 
@@ -175,6 +215,8 @@ KiTrapExitStub KiEditedTrapReturn,        (KI_RESTORE_VOLATILES OR KI_RESTORE_EF
 KiTrapExitStub KiTrapReturn,              (KI_RESTORE_VOLATILES OR KI_RESTORE_SEGMENTS OR KI_EXIT_IRET)
 KiTrapExitStub KiTrapReturnNoSegments,    (KI_RESTORE_VOLATILES OR KI_EXIT_IRET)
 KiTrapExitStub KiTrapReturnNoSegmentsRet8,(KI_RESTORE_VOLATILES OR KI_RESTORE_EFLAGS OR KI_EXIT_RET8)
+
+.code
 
 EXTERN _PsConvertToGuiThread@0:PROC
 
