@@ -6,6 +6,14 @@
 extern "C" {
 #endif
 
+/* Takes the PTE index (for one PD page) from a PTE address */
+FORCEINLINE
+ULONG
+MiPteToPteOffset(PMMPTE Pte)
+{
+    return ((ULONG_PTR)Pte / sizeof(MMPTE)) % PTE_PER_PAGE;
+}
+
 /* TYPES *********************************************************************/
 
 struct _EPROCESS;
@@ -105,6 +113,11 @@ typedef ULONG_PTR SWAPENTRY;
 #define VERIFIER_POOL_MASK                  64
 
 #define MAX_PAGING_FILES                    (16)
+
+//
+// Special IRQL value (found in assertions)
+//
+#define MM_NOIRQL (KIRQL)0xFFFFFFFF
 
 // FIXME: use ALIGN_UP_BY
 #define MM_ROUND_UP(x,s)                    \
@@ -662,6 +675,16 @@ MmInitSystem(IN ULONG Phase,
 
 /* pagefile.c ****************************************************************/
 
+NTSTATUS
+MiAllocSwapEntry(
+    _Out_ PULONG PageFileLow,
+    _Out_ PULONG_PTR PageFileHigh);
+
+VOID
+MiFreeSwapEntry(
+    _In_ ULONG PageFileLow,
+    _In_ ULONG_PTR PageFileHigh);
+
 SWAPENTRY
 NTAPI
 MmAllocSwapPage(VOID);
@@ -685,6 +708,11 @@ MmReadFromSwapPage(
     SWAPENTRY SwapEntry,
     PFN_NUMBER Page
 );
+
+NTSTATUS
+MiWriteSwapEntry(_In_ ULONG PageFileLow,
+                 _In_ ULONG_PTR PageFileHigh,
+                 _In_ PFN_NUMBER Page);
 
 NTSTATUS
 NTAPI
@@ -861,6 +889,11 @@ MmRequestPageMemoryConsumer(
     PPFN_NUMBER AllocatedPage
 );
 
+VOID
+NTAPI
+MmWorkingSetManager(VOID);
+extern KEVENT MmWorkingSetManagerEvent;
+
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -869,6 +902,8 @@ MiInitBalancerThread(VOID);
 VOID
 NTAPI
 MmRebalanceMemoryConsumers(VOID);
+
+extern KEVENT MmBalancerIdleEvent;
 
 /* rmap.c **************************************************************/
 #define RMAP_SEGMENT_MASK ~((ULONG_PTR)0xff)
@@ -929,7 +964,16 @@ FORCEINLINE
 KIRQL
 MiAcquirePfnLock(VOID)
 {
+#if MI_TRACE_PFNS
+    KIRQL ret = KeAcquireQueuedSpinLock(LockQueuePfnLock);
+
+    MI_SET_USAGE(MI_USAGE_NOT_SET);
+    MI_SET_PROCESS2("Not set");
+
+    return ret;
+#else
     return KeAcquireQueuedSpinLock(LockQueuePfnLock);
+#endif
 }
 
 FORCEINLINE
@@ -944,11 +988,12 @@ FORCEINLINE
 VOID
 MiAcquirePfnLockAtDpcLevel(VOID)
 {
-    PKSPIN_LOCK_QUEUE LockQueue;
-
     ASSERT(KeGetCurrentIrql() >= DISPATCH_LEVEL);
-    LockQueue = &KeGetCurrentPrcb()->LockQueue[LockQueuePfnLock];
-    KeAcquireQueuedSpinLockAtDpcLevel(LockQueue);
+    KeAcquireQueuedSpinLockAtDpcLevel(&KeGetCurrentPrcb()->LockQueue[LockQueuePfnLock]);
+#if MI_TRACE_PFNS
+    MI_SET_USAGE(MI_USAGE_NOT_SET);
+    MI_SET_PROCESS2("Not set");
+#endif
 }
 
 FORCEINLINE
@@ -1021,11 +1066,27 @@ MiMapPageInHyperSpace(IN PEPROCESS Process,
                       IN PFN_NUMBER Page,
                       IN PKIRQL OldIrql);
 
+FORCEINLINE
+PVOID
+MiMapPageInHyperSpaceAtDpcLevel(_In_ PEPROCESS Process,
+                                _In_ PFN_NUMBER Page)
+{
+    return MiMapPageInHyperSpace(Process, Page, NULL);
+}
+
 VOID
 NTAPI
 MiUnmapPageInHyperSpace(IN PEPROCESS Process,
                         IN PVOID Address,
                         IN KIRQL OldIrql);
+
+FORCEINLINE
+VOID
+MiUnmapPageInHyperSpaceAtDpcLevel(_In_ PEPROCESS Process,
+                                  _In_ PVOID Address)
+{
+    MiUnmapPageInHyperSpace(Process, Address, MM_NOIRQL);
+}
 
 PVOID
 NTAPI
@@ -1225,6 +1286,18 @@ BOOLEAN
 MiArchCreateProcessAddressSpace(
     _In_ PEPROCESS Process,
     _In_ PULONG_PTR DirectoryTableBase);
+
+/* pfnlist.c *****************************************************************/
+VOID
+MmCompletePageWrite(
+    _Inout_ PMDL Mdl,
+    _In_ NTSTATUS Status);
+
+VOID
+MmWakeModifiedWriterThread(VOID);
+
+VOID
+MiModifiedPageWrite(BOOLEAN Urgent);
 
 /* wset.c ********************************************************************/
 
@@ -1655,6 +1728,8 @@ MmSetSessionLocaleId(
 
 VOID
 MmShutdownSystem(IN ULONG Phase);
+
+extern BOOLEAN MmShutdownInProgress;
 
 /* virtual.c *****************************************************************/
 

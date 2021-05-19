@@ -32,6 +32,7 @@ static ULONG MiMinimumAvailablePages;
 static LIST_ENTRY AllocationListHead;
 static KSPIN_LOCK AllocationListLock;
 static ULONG MiMinimumPagesPerRun;
+KEVENT MmBalancerIdleEvent;
 
 static CLIENT_ID MiBalancerThreadId;
 static HANDLE MiBalancerThreadHandle = NULL;
@@ -50,6 +51,7 @@ MmInitializeBalancer(ULONG NrAvailablePages, ULONG NrSystemPages)
     memset(MiMemoryConsumers, 0, sizeof(MiMemoryConsumers));
     InitializeListHead(&AllocationListHead);
     KeInitializeSpinLock(&AllocationListLock);
+    KeInitializeEvent(&MmBalancerIdleEvent, NotificationEvent, TRUE);
 
     /* Set up targets. */
     MiMinimumAvailablePages = 256;
@@ -105,10 +107,10 @@ MiTrimMemoryConsumer(ULONG Consumer, ULONG InitialTarget)
         return InitialTarget;
     }
 
-    if (MmAvailablePages < MiMinimumAvailablePages)
+    if (MmAvailablePages < MmThrottleTop)
     {
         /* Global page limit exceeded */
-        Target = (ULONG)max(Target, MiMinimumAvailablePages - MmAvailablePages);
+        Target = (ULONG)max(Target, MmThrottleTop - MmAvailablePages + 30);
     }
     else if (MiMemoryConsumers[Consumer].PagesUsed > MiMemoryConsumers[Consumer].PagesTarget)
     {
@@ -119,7 +121,7 @@ MiTrimMemoryConsumer(ULONG Consumer, ULONG InitialTarget)
     if (Target)
     {
         /* Now swap the pages out */
-        Status = MiMemoryConsumers[Consumer].Trim(Target, MmAvailablePages < MiMinimumAvailablePages, &NrFreedPages);
+        Status = MiMemoryConsumers[Consumer].Trim(Target, MmAvailablePages < MmThrottleTop, &NrFreedPages);
 
         DPRINT("Trimming consumer %lu: Freed %lu pages with a target of %lu pages\n", Consumer, NrFreedPages, Target);
 
@@ -241,7 +243,7 @@ MmTrimUserMemory(ULONG Target, ULONG Priority, PULONG NrFreedPages)
             Target--;
         }
 
-        CurrentPage = MmGetLRUNextUserPage(CurrentPage, TRUE);
+        CurrentPage = MmGetLRUNextUserPage(CurrentPage, Priority == 0);
     }
 
     if (CurrentPage)
@@ -252,13 +254,6 @@ MmTrimUserMemory(ULONG Target, ULONG Priority, PULONG NrFreedPages)
     }
 
     return STATUS_SUCCESS;
-}
-
-static BOOLEAN
-MiIsBalancerThread(VOID)
-{
-    return (MiBalancerThreadHandle != NULL) &&
-           (PsGetCurrentThreadId() == MiBalancerThreadId.UniqueThread);
 }
 
 VOID
@@ -277,9 +272,23 @@ MmRequestPageMemoryConsumer(ULONG Consumer, BOOLEAN CanWait,
                             PPFN_NUMBER AllocatedPage)
 {
     PFN_NUMBER Page;
+    KIRQL OldIrql;
 
     /* Update the target */
     InterlockedIncrementUL(&MiMemoryConsumers[Consumer].PagesUsed);
+
+    OldIrql = MiAcquirePfnLock();
+
+    while ((PsGetCurrentThreadId() != MiBalancerThreadId.UniqueThread) && (MmAvailablePages < 32))
+    {
+        MiReleasePfnLock(OldIrql);
+        /* Wait for the balancer thread to finish and relaunch it */
+        KeWaitForSingleObject(&MmBalancerIdleEvent, WrPageIn, KernelMode, FALSE, NULL);
+        MmRebalanceMemoryConsumers();
+        YieldProcessor();
+
+        OldIrql = MiAcquirePfnLock();
+    }
 
     /*
      * Actually allocate the page.
@@ -290,6 +299,8 @@ MmRequestPageMemoryConsumer(ULONG Consumer, BOOLEAN CanWait,
         KeBugCheck(NO_PAGES_AVAILABLE);
     }
     *AllocatedPage = Page;
+
+    MiReleasePfnLock(OldIrql);
 
     return(STATUS_SUCCESS);
 }
@@ -320,32 +331,12 @@ MiBalancerThread(PVOID Unused)
         {
             ULONG InitialTarget = 0;
 
-#if (_MI_PAGING_LEVELS == 2)
-            if (!MiIsBalancerThread())
-            {
-                /* Clean up the unused PDEs */
-                ULONG_PTR Address;
-                PEPROCESS Process = PsGetCurrentProcess();
+            /* Don't try anything if we are shutting down */
+            if (MmShutdownInProgress)
+                continue;
 
-                /* Acquire PFN lock */
-                KIRQL OldIrql = MiAcquirePfnLock();
-                PMMPDE pointerPde;
-                for (Address = (ULONG_PTR)MI_LOWEST_VAD_ADDRESS;
-                     Address < (ULONG_PTR)MM_HIGHEST_VAD_ADDRESS;
-                     Address += PTE_PER_PAGE * PAGE_SIZE)
-                {
-                    if (MiQueryPageTableReferences((PVOID)Address) == 0)
-                    {
-                        pointerPde = MiAddressToPde(Address);
-                        if (pointerPde->u.Hard.Valid)
-                            MiDeletePte(pointerPde, MiPdeToPte(pointerPde), Process, NULL);
-                        ASSERT(pointerPde->u.Hard.Valid == 0);
-                    }
-                }
-                /* Release lock */
-                MiReleasePfnLock(OldIrql);
-            }
-#endif
+            KeClearEvent(&MmBalancerIdleEvent);
+
             do
             {
                 ULONG OldTarget = InitialTarget;
@@ -365,6 +356,8 @@ MiBalancerThread(PVOID Unused)
                 }
             }
             while (InitialTarget != 0);
+
+            KeSetEvent(&MmBalancerIdleEvent, IO_NO_INCREMENT, FALSE);
 
             if (Status == STATUS_WAIT_0)
                 InterlockedDecrement(&PageOutThreadActive);

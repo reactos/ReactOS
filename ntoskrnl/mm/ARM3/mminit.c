@@ -2041,6 +2041,59 @@ MiDbgDumpMemoryDescriptors(VOID)
 }
 
 CODE_SEG("INIT")
+static
+VOID
+MiInitializeSystemCache(VOID)
+{
+    PFN_NUMBER Page;
+    PMMPDE PointerPde;
+    MMPDE TempPde;
+    PMMPTE PointerPte;
+    MMPTE TempPte;
+    KIRQL OldIrql;
+
+
+    MiLockWorkingSet(PsGetCurrentThread(), &MmSystemCacheWs);
+
+    OldIrql = MiAcquirePfnLock();
+
+    /* Setup a PDE for us */
+    PointerPde = MiAddressToPde(MmSystemCacheWorkingSetList);
+    MI_SET_USAGE(MI_USAGE_PAGE_TABLE);
+    MI_SET_PROCESS2("Kernel WS list");
+    Page = MiRemoveZeroPage(MI_GET_NEXT_COLOR());
+    MI_WRITE_INVALID_PDE(PointerPde, DemandZeroPde);
+
+    MiInitializePfn(Page, (PMMPTE)PointerPde, TRUE);
+    TempPde = ValidKernelPde;
+    TempPde.u.Hard.PageFrameNumber = Page;
+    MI_WRITE_VALID_PDE(PointerPde, TempPde);
+
+    /* Reserve one page for us now */
+    PointerPte = MiAddressToPte(MmSystemCacheWorkingSetList);
+    MI_SET_PROCESS2("Kernel WS list");
+    MI_SET_USAGE(MI_USAGE_WSLE);
+
+    /* Reserve a page for the list */
+    Page = MiRemoveZeroPage(MI_GET_NEXT_COLOR());
+
+    MI_WRITE_INVALID_PTE(PointerPte, DemandZeroPte);
+    MiInitializePfn(Page, PointerPte, TRUE);
+
+    TempPte = ValidKernelPte;
+    TempPte.u.Hard.PageFrameNumber = Page;
+    MI_WRITE_VALID_PTE(PointerPte, TempPte);
+
+    MmSystemCacheWs.VmWorkingSetList = MmSystemCacheWorkingSetList;
+
+    MiInitializeWorkingSetList(&MmSystemCacheWs);
+
+    MiReleasePfnLock(OldIrql);
+
+    MiUnlockWorkingSet(PsGetCurrentThread(), &MmSystemCacheWs);
+}
+
+CODE_SEG("INIT")
 BOOLEAN
 NTAPI
 MmArmInitSystem(IN ULONG Phase,
@@ -2534,7 +2587,7 @@ MmArmInitSystem(IN ULONG Phase,
 #endif
 
         /* Initialize the system cache */
-        //MiInitializeSystemCache(MmSystemCacheWsMinimum, MmAvailablePages);
+        MiInitializeSystemCache();
 
         /* Update the commit limit */
         MmTotalCommitLimit = MmAvailablePages;
@@ -2549,6 +2602,17 @@ MmArmInitSystem(IN ULONG Phase,
 
         /* Initialize the loaded module list */
         MiInitializeLoadedModuleList(LoaderBlock);
+    }
+
+    if (Phase == 2)
+    {
+        /* Start the modified page writer thread */
+        NTSTATUS Status = MiStartModifiedPageWriterThread();
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to start the MPW thread: Status 0x%08x\n", Status);
+            return FALSE;
+        }
     }
 
     //

@@ -326,9 +326,6 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
                 PageFrameIndex = PFN_FROM_PTE(PointerPte);
                 Pfn1 = MiGetPfnEntry(PageFrameIndex);
 
-                /* Should not have any working set data yet */
-                ASSERT(Pfn1->u1.WsIndex == 0);
-
                 /* Actual valid, legitimate, pages */
                 if (ValidPages) (*ValidPages)++;
 
@@ -338,6 +335,9 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
 
                 /* Lock the PFN database */
                 OldIrql = MiAcquirePfnLock();
+
+                /* Remove from the WS */
+                MiRemoveFromWorkingSetList(&MmSystemCacheWs, MiPteToAddress(PointerPte));
 
                 /* Delete it the page */
                 MI_SET_PFN_DELETED(Pfn1);
@@ -386,17 +386,25 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
     return ActualPages;
 }
 
+_Requires_exclusive_lock_held_(WorkingSet->WorkingSetMutex)
 VOID
 NTAPI
-MiDeletePte(IN PMMPTE PointerPte,
-            IN PVOID VirtualAddress,
-            IN PEPROCESS CurrentProcess,
-            IN PMMPTE PrototypePte)
+MiDeletePte(
+    _Inout_ PMMPTE PointerPte,
+    _In_ PVOID VirtualAddress,
+    _In_ PMMSUPPORT WorkingSet,
+    _In_ PMMPTE PrototypePte)
 {
     PMMPFN Pfn1;
     MMPTE TempPte;
     PFN_NUMBER PageFrameIndex;
     PMMPDE PointerPde;
+
+    /* WorkingSet must be exclusively locked */
+    ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
+
+    /* If this is a process working set, this must be current one. */
+    ASSERT((WorkingSet == &PsGetCurrentProcess()->Vm) || !MI_IS_PROCESS_WORKING_SET(WorkingSet));
 
     /* Capture the PTE */
     TempPte = *PointerPte;
@@ -404,9 +412,8 @@ MiDeletePte(IN PMMPTE PointerPte,
     /* See if the PTE is valid */
     if (TempPte.u.Hard.Valid == 0)
     {
-        /* Prototype and paged out PTEs not supported yet */
+        /* Prototype not supported yet */
         ASSERT(TempPte.u.Soft.Prototype == 0);
-        ASSERT((TempPte.u.Soft.PageFileHigh == 0) || (TempPte.u.Soft.Transition == 1));
 
         if (TempPte.u.Soft.Transition)
         {
@@ -423,13 +430,18 @@ MiDeletePte(IN PMMPTE PointerPte,
             MI_ERASE_PTE(PointerPte);
 
             KIRQL OldIrql = MiAcquirePfnLock();
+            ASSERT(Pfn1->u3.e1.PrototypePte == 0);
 
             /* Drop the reference on the page table. */
             MiDecrementShareCount(MiGetPfnEntry(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
 
-            ASSERT(Pfn1->u3.e1.PrototypePte == 0);
+            /* Delete the PFN */
+            MI_SET_PFN_DELETED(Pfn1);
 
-            /* Make the page free. For prototypes, it will be made free when deleting the section object */
+            /* It must be either free (refcount == 0) or being written (refcount == 1) */
+            ASSERT(Pfn1->u3.e2.ReferenceCount == Pfn1->u3.e1.WriteInProgress);
+
+            /* See if we must free it ourselves, or if it will be freed once I/O is over */
             if (Pfn1->u3.e2.ReferenceCount == 0)
             {
                 /* And it should be in standby or modified list */
@@ -440,11 +452,20 @@ MiDeletePte(IN PMMPTE PointerPte,
                 Pfn1->u3.e2.ReferenceCount++;
 
                 /* This will put it back in free list and clean properly up */
-                MI_SET_PFN_DELETED(Pfn1);
                 MiDecrementReferenceCount(Pfn1, PageFrameIndex);
             }
 
             MiReleasePfnLock(OldIrql);
+            return;
+        }
+
+        if (TempPte.u.Soft.PageFileHigh != 0)
+        {
+            /* Simply free the page file entry */
+            MiFreeSwapEntry(TempPte.u.Soft.PageFileLow, TempPte.u.Soft.PageFileHigh);
+
+            MI_ERASE_PTE(PointerPte);
+
             return;
         }
     }
@@ -508,7 +529,7 @@ MiDeletePte(IN PMMPTE PointerPte,
     else
     {
         /* Remove this address from the WS list */
-        MiRemoveFromWorkingSetList(&CurrentProcess->Vm, VirtualAddress);
+        MiRemoveFromWorkingSetList(WorkingSet, VirtualAddress);
 
         /* Make sure the saved PTE address is valid */
         if ((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~0x1) != PointerPte)
@@ -529,6 +550,7 @@ MiDeletePte(IN PMMPTE PointerPte,
         ASSERT(Pfn1->u2.ShareCount == 1);
 
         /* Drop the reference on the page table. */
+        ASSERT(Pfn1->u4.PteFrame == MiPteToPde(PointerPte)->u.Hard.PageFrameNumber);
         MiDecrementShareCount(MiGetPfnEntry(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
 
         /* Mark the PFN for deletion and dereference what should be the last ref */
@@ -719,7 +741,7 @@ MiDeleteVirtualAddresses(IN ULONG_PTR Va,
                         /* Delete the PTE proper */
                         MiDeletePte(PointerPte,
                                     (PVOID)Va,
-                                    CurrentProcess,
+                                    &CurrentProcess->Vm,
                                     PrototypePte);
                     }
                 }
@@ -751,7 +773,7 @@ MiDeleteVirtualAddresses(IN ULONG_PTR Va,
                 /* Delete the PTE proper */
                 MiDeletePte(PointerPde,
                             MiPteToAddress(PointerPde),
-                            CurrentProcess,
+                            &CurrentProcess->Vm,
                             NULL);
             }
         }
@@ -2637,14 +2659,59 @@ MiDecommitPages(IN PVOID StartingAddress,
                     }
                     ValidPteList[PteCount++] = PointerPte;
                 }
+                else if (PteContents.u.Soft.Transition)
+                {
+                    PFN_NUMBER Page;
+                    PMMPFN Pfn1;
+                    KIRQL OldIrql = MiAcquirePfnLock();
+
+                    /* Get the PFN entry */
+                    Page = PteContents.u.Trans.PageFrameNumber;
+                    Pfn1 = MiGetPfnEntry(Page);
+
+                    DPRINT("Pte %p is transitional!\n", PointerPte);
+
+                    /* Make sure the saved PTE address is valid */
+                    ASSERT((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~0x1) == PointerPte);
+
+                    ASSERT(Pfn1->u3.e1.PrototypePte == 0);
+
+                    /* There shouldn't be any reference left. */
+                    ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
+                    /* And it should be in standby or modified list */
+                    ASSERT((Pfn1->u3.e1.PageLocation == ModifiedPageList) ||
+                        (Pfn1->u3.e1.PageLocation == StandbyPageList));
+
+                    /* Drop reference on the page table */
+                    MiDecrementShareCount(MiGetPfnEntry(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
+
+                    /* Unlink it and set its reference count to one */
+                    MiUnlinkPageFromList(Pfn1);
+                    Pfn1->u3.e2.ReferenceCount++;
+
+                    /* This will put it back in free list and clean properly up */
+                    MI_SET_PFN_DELETED(Pfn1);
+                    MiDecrementReferenceCount(Pfn1, Page);
+
+                    MiReleasePfnLock(OldIrql);
+
+                    MI_WRITE_INVALID_PTE(PointerPte, MmDecommittedPte);
+                }
+                else if (PteContents.u.Soft.PageFileHigh != 0)
+                {
+                    /* Release the swap page & write the PTE */
+                    KIRQL OldIrql = MiAcquirePfnLock();
+                    MiFreeSwapEntry(PteContents.u.Soft.PageFileLow, PteContents.u.Soft.PageFileHigh);
+                    MiReleasePfnLock(OldIrql);
+
+                    MI_WRITE_INVALID_PTE(PointerPte, MmDecommittedPte);
+                }
                 else
                 {
                     //
                     // We do not support any of these other scenarios at the moment
                     //
                     ASSERT(PteContents.u.Soft.Prototype == 0);
-                    ASSERT(PteContents.u.Soft.Transition == 0);
-                    ASSERT(PteContents.u.Soft.PageFileHigh == 0);
 
                     //
                     // So the only other possibility is that it is still a demand
@@ -4700,7 +4767,7 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         Vad->ControlArea = NULL; // For Memory-Area hack
 
         //
-        // Insert the VAD
+        // Insert the VAD. This will check for commitment limit, if needed.
         //
         Status = MiInsertVadEx(Vad,
                                &StartingAddress,
@@ -4901,32 +4968,63 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         KeAcquireGuardedMutexUnsafe(&MmSectionCommitMutex);
 
         //
-        // Get the segment template PTE and start looping each page
+        // Loop the pages to see what we must commit
         //
-        TempPte = FoundVad->ControlArea->Segment->SegmentPteTemplate;
-        ASSERT(TempPte.u.Long != 0);
         while (PointerPte <= LastPte)
         {
-            //
-            // For each non-already-committed page, write the invalid template PTE
-            //
-            if (PointerPte->u.Long == 0)
+            if (PointerPte->u.Long != 0)
             {
-                MI_WRITE_INVALID_PTE(PointerPte, TempPte);
-            }
-            else
-            {
+                /* This one is already committed */
                 QuotaFree++;
             }
             PointerPte++;
         }
 
         //
-        // Now do the commit accounting and release the lock
+        // Now do the commit accounting.
         //
         ASSERT(QuotaCharge >= QuotaFree);
         QuotaCharge -= QuotaFree;
-        FoundVad->ControlArea->Segment->NumberOfCommittedPages += QuotaCharge;
+
+        if (QuotaCharge)
+        {
+#if 0
+            KIRQL OldIrql = MiAcquirePfnLock();
+            if (MmTotalCommittedPages + QuotaCharge > MmTotalCommitLimit)
+            {
+                DPRINT1("Commitment limit exceeded ! Trying to charge %x, Number of committed pages: %lx, Commit limit %lx.\n",
+                    QuotaCharge, MmTotalCommittedPages, MmTotalCommitLimit);
+                Status = STATUS_COMMITMENT_LIMIT;
+                MiReleasePfnLock(OldIrql);
+                KeReleaseGuardedMutexUnsafe(&MmSectionCommitMutex);
+                goto FailPath;
+            }
+
+            /* So we get enough commitment space for this. Take this into the global count. */
+            MmTotalCommittedPages += QuotaCharge;
+            MiReleasePfnLock(OldIrql);
+#endif
+
+            /* Now we must commit for real */
+            FoundVad->ControlArea->Segment->NumberOfCommittedPages += QuotaCharge;
+            TempPte = FoundVad->ControlArea->Segment->SegmentPteTemplate;
+            ASSERT(TempPte.u.Long != 0);
+            PointerPte = MI_GET_PROTOTYPE_PTE_FOR_VPN(FoundVad, StartingAddress >> PAGE_SHIFT);
+            while (PointerPte <= LastPte)
+            {
+                //
+                // For each already committed page, write the invalid template PTE
+                //
+                if (PointerPte->u.Long == 0)
+                {
+                    ASSERT(QuotaCharge-- > 0);
+                    MI_WRITE_INVALID_PTE(PointerPte, TempPte);
+                }
+                PointerPte++;
+            }
+            ASSERT(QuotaCharge == 0);
+        }
+
         KeReleaseGuardedMutexUnsafe(&MmSectionCommitMutex);
 
         //
@@ -5037,7 +5135,6 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
             if (PointerPte->u.Soft.Valid == 0)
             {
                 ASSERT(PointerPte->u.Soft.Prototype == 0);
-                ASSERT((PointerPte->u.Soft.PageFileHigh == 0) || (PointerPte->u.Soft.Transition == 1));
             }
 
             //
