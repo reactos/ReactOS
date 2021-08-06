@@ -714,19 +714,8 @@ QSI_DEF(SystemPerformanceInformation)
     }
 
     Spi->AvailablePages = (ULONG)MmAvailablePages;
-    /*
-     *   Add up all the used "Committed" memory + pagefile.
-     *   Not sure this is right. 8^\
-     */
-    Spi->CommittedPages = MiMemoryConsumers[MC_SYSTEM].PagesUsed +
-                          MiMemoryConsumers[MC_USER].PagesUsed +
-                          MiUsedSwapPages;
-    /*
-     *  Add up the full system total + pagefile.
-     *  All this make Taskmgr happy but not sure it is the right numbers.
-     *  This too, fixes some of GlobalMemoryStatusEx numbers.
-     */
-    Spi->CommitLimit = MmNumberOfPhysicalPages + MiFreeSwapPages + MiUsedSwapPages;
+    Spi->CommittedPages = (ULONG)MmTotalCommittedPages;
+    Spi->CommitLimit = (ULONG)MmTotalCommitLimit;
 
     Spi->PeakCommitment = 0; /* FIXME */
     Spi->PageFaultCount = 0; /* FIXME */
@@ -766,7 +755,7 @@ QSI_DEF(SystemPerformanceInformation)
     Spi->TotalSystemDriverPages = 0; /* FIXME */
     Spi->Spare3Count = 0; /* FIXME */
 
-    Spi->ResidentSystemCachePage = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
+    Spi->ResidentSystemCachePage = 0; /* FIXME */
     Spi->ResidentPagedPoolPage = 0; /* FIXME */
 
     Spi->ResidentSystemDriverPage = 0; /* FIXME */
@@ -1480,10 +1469,10 @@ QSI_DEF(SystemFileCacheInformation)
     RtlZeroMemory(Sci, sizeof(SYSTEM_FILECACHE_INFORMATION));
 
     /* Return the Byte size not the page size. */
-    Sci->CurrentSize = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
-    Sci->PeakSize = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
+    Sci->CurrentSize = 0; /* FIXME */
+    Sci->PeakSize = 0; /* FIXME */
     /* Taskmgr multiplies this one by page size right away */
-    Sci->CurrentSizeIncludingTransitionInPages = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME: Should be */
+    Sci->CurrentSizeIncludingTransitionInPages = 0; /* FIXME: Should be */
     /* system working set and standby pages. */
     Sci->PageFaultCount = 0; /* FIXME */
     Sci->MinimumWorkingSet = 0; /* FIXME */
@@ -1568,30 +1557,9 @@ SSI_DEF(SystemDpcBehaviourInformation)
 /* Class 25 - Full Memory Information */
 QSI_DEF(SystemFullMemoryInformation)
 {
-    PULONG Spi = (PULONG) Buffer;
-
-    PEPROCESS TheIdleProcess;
-
-    *ReqSize = sizeof(ULONG);
-
-    if (sizeof(ULONG) != Size)
-    {
-        return STATUS_INFO_LENGTH_MISMATCH;
-    }
-
-    DPRINT("SystemFullMemoryInformation\n");
-
-    TheIdleProcess = PsIdleProcess;
-
-    DPRINT("PID: %p, KernelTime: %u PFFree: %lu PFUsed: %lu\n",
-           TheIdleProcess->UniqueProcessId,
-           TheIdleProcess->Pcb.KernelTime,
-           MiFreeSwapPages,
-           MiUsedSwapPages);
-
-    *Spi = MiMemoryConsumers[MC_USER].PagesUsed;
-
-    return STATUS_SUCCESS;
+    /* Unimplemented as per https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/query.htm?tx=76&ts=0,1254 */
+    DPRINT1("NtSetSystemInformation - SystemFullMemoryInformation not implemented\n");
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 /* Class 26 - Load Image */

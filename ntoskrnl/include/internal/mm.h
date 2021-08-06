@@ -100,10 +100,6 @@ typedef ULONG_PTR SWAPENTRY;
 
 #define SEC_PHYSICALMEMORY                  (0x80000000)
 
-#define MC_USER                             (0)
-#define MC_SYSTEM                           (1)
-#define MC_MAXIMUM                          (2)
-
 #define PAGED_POOL_MASK                     1
 #define MUST_SUCCEED_POOL_MASK              2
 #define CACHE_ALIGNED_POOL_MASK             4
@@ -368,11 +364,14 @@ typedef struct _MMPFN
         PKEVENT Event;
         NTSTATUS ReadStatus;
         SINGLE_LIST_ENTRY NextStackPfn;
+    } u1;
+    union
+    {
+        PMMPTE PteAddress;
 
         // HACK for ROSPFN
-        SWAPENTRY SwapEntry;
-    } u1;
-    PMMPTE PteAddress;
+        PMM_RMAP_ENTRY RmapListHead;
+    };
     union
     {
         PFN_NUMBER Blink;
@@ -395,9 +394,8 @@ typedef struct _MMPFN
     {
         MMPTE OriginalPte;
         LONG AweReferenceCount;
-
         // HACK for ROSPFN
-        PMM_RMAP_ENTRY RmapListHead;
+        SWAPENTRY SwapEntry;
     };
     union
     {
@@ -481,8 +479,6 @@ typedef struct _MM_PAGED_POOL_INFO
     SIZE_T PagedPoolCommit;
     SIZE_T AllocatedPagedPool;
 } MM_PAGED_POOL_INFO, *PMM_PAGED_POOL_INFO;
-
-extern MM_MEMORY_CONSUMER MiMemoryConsumers[MC_MAXIMUM];
 
 /* Page file information */
 typedef struct _MMPAGING_FILE
@@ -848,36 +844,11 @@ MmDeleteKernelStack(PVOID Stack,
 
 /* balance.c *****************************************************************/
 
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeMemoryConsumer(
-    ULONG Consumer,
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed)
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeBalancer(
-    ULONG NrAvailablePages,
-    ULONG NrSystemPages
-);
+NTSTATUS
+MmReleasePage(PFN_NUMBER Page);
 
 NTSTATUS
-NTAPI
-MmReleasePageMemoryConsumer(
-    ULONG Consumer,
-    PFN_NUMBER Page
-);
-
-NTSTATUS
-NTAPI
-MmRequestPageMemoryConsumer(
-    ULONG Consumer,
-    BOOLEAN MyWait,
-    PPFN_NUMBER AllocatedPage
-);
+MmRequestPage(PPFN_NUMBER AllocatedPage);
 
 CODE_SEG("INIT")
 VOID
@@ -1152,10 +1123,7 @@ MmIsPageSwapEntry(
 );
 
 PFN_NUMBER
-NTAPI
-MmAllocPage(
-    ULONG Consumer
-);
+MmAllocPage(VOID);
 
 VOID
 NTAPI
@@ -1256,15 +1224,6 @@ BOOLEAN
 MiArchCreateProcessAddressSpace(
     _In_ PEPROCESS Process,
     _In_ PULONG_PTR DirectoryTableBase);
-
-/* wset.c ********************************************************************/
-
-NTSTATUS
-MmTrimUserMemory(
-    ULONG Target,
-    ULONG Priority,
-    PULONG NrFreedPages
-);
 
 /* region.c ************************************************************/
 

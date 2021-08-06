@@ -192,8 +192,10 @@ MiAllocatePagesForMdl(IN PHYSICAL_ADDRESS LowAddress,
     KIRQL OldIrql;
     PMMPFN Pfn1;
     INT LookForZeroedPages;
+
     ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
-    DPRINT1("ARM3-DEBUG: Being called with %I64x %I64x %I64x %lx %d %lu\n", LowAddress, HighAddress, SkipBytes, TotalBytes, CacheAttribute, MdlFlags);
+
+    DPRINT("ARM3-DEBUG: Being called with %I64x %I64x %I64x %lx %d %lu\n", LowAddress, HighAddress, SkipBytes, TotalBytes, CacheAttribute, MdlFlags);
 
     //
     // Convert the low address into a PFN
@@ -490,7 +492,7 @@ MmSetSavedSwapEntryPage(PFN_NUMBER Pfn,  SWAPENTRY SwapEntry)
     ASSERT_IS_ROS_PFN(Pfn1);
 
     oldIrql = MiAcquirePfnLock();
-    Pfn1->u1.SwapEntry = SwapEntry;
+    Pfn1->SwapEntry = SwapEntry;
     MiReleasePfnLock(oldIrql);
 }
 
@@ -507,7 +509,7 @@ MmGetSavedSwapEntryPage(PFN_NUMBER Pfn)
     ASSERT_IS_ROS_PFN(Pfn1);
 
     oldIrql = MiAcquirePfnLock();
-    SwapEntry = Pfn1->u1.SwapEntry;
+    SwapEntry = Pfn1->SwapEntry;
     MiReleasePfnLock(oldIrql);
 
     return(SwapEntry);
@@ -578,11 +580,7 @@ MmDereferencePage(PFN_NUMBER Pfn)
     if (Pfn1->u3.e2.ReferenceCount == 0)
     {
         /* Apply LRU hack */
-        if (Pfn1->u4.MustBeCached)
-        {
-            MmRemoveLRUUserPage(Pfn);
-            Pfn1->u4.MustBeCached = 0;
-        }
+        MmRemoveLRUUserPage(Pfn);
 
         /* Mark the page temporarily as valid, we're going to make it free soon */
         Pfn1->u3.e1.PageLocation = ActiveAndValid;
@@ -597,8 +595,7 @@ MmDereferencePage(PFN_NUMBER Pfn)
 }
 
 PFN_NUMBER
-NTAPI
-MmAllocPage(ULONG Type)
+MmAllocPage(VOID)
 {
     PFN_NUMBER PfnOffset;
     PMMPFN Pfn1;
@@ -606,19 +603,7 @@ MmAllocPage(ULONG Type)
 
     OldIrql = MiAcquirePfnLock();
 
-#if MI_TRACE_PFNS
-    switch(Type)
-    {
-    case MC_SYSTEM:
-        MI_SET_USAGE(MI_USAGE_CACHE);
-        break;
-    case MC_USER:
-        MI_SET_USAGE(MI_USAGE_SECTION);
-        break;
-    default:
-        ASSERT(FALSE);
-    }
-#endif
+    MI_SET_USAGE(MI_USAGE_SECTION);
 
     PfnOffset = MiRemoveZeroPage(MI_GET_NEXT_COLOR());
     if (!PfnOffset)
@@ -635,17 +620,13 @@ MmAllocPage(ULONG Type)
     Pfn1->u4.AweAllocation = TRUE;
 
     /* Allocate the extra ReactOS Data and zero it out */
-    Pfn1->u1.SwapEntry = 0;
+    Pfn1->SwapEntry = 0;
     Pfn1->RmapListHead = NULL;
 
     Pfn1->NextLRU = NULL;
     Pfn1->PreviousLRU = NULL;
 
-    if (Type == MC_USER)
-    {
-        Pfn1->u4.MustBeCached = 1; /* HACK again */
-        MmInsertLRULastUserPage(PfnOffset);
-    }
+    MmInsertLRULastUserPage(PfnOffset);
 
     MiReleasePfnLock(OldIrql);
     return PfnOffset;
