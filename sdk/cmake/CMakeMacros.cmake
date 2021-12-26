@@ -44,7 +44,7 @@ function(add_message_headers _type)
             OUTPUT "${_converted_file}"
             COMMAND native-utf16le "${_source_file}" "${_converted_file}" nobom
             DEPENDS native-utf16le "${_source_file}")
-        macro_mc(${_flag} ${_converted_file})
+        set(COMMAND_MC ${CMAKE_MC_COMPILER} -u ${_flag} -b -h ${CMAKE_CURRENT_BINARY_DIR}/ -r ${CMAKE_CURRENT_BINARY_DIR}/ ${_converted_file})
         add_custom_command(
             OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_file_name}.h ${CMAKE_CURRENT_BINARY_DIR}/${_file_name}.rc
             COMMAND ${COMMAND_MC}
@@ -464,6 +464,74 @@ function(create_iso_lists)
     file(GENERATE
          OUTPUT ${REACTOS_BINARY_DIR}/boot/bootcdregtest.$<CONFIG>.lst
          INPUT ${REACTOS_BINARY_DIR}/boot/bootcdregtest.cmake.lst)
+endfunction()
+
+function(spec2def _dllname _spec_files)
+    cmake_parse_arguments(__spec2def "ADD_IMPORTLIB;NO_PRIVATE_WARNINGS;WITH_RELAY" "VERSION" "" ${ARGN})
+
+    # Get library basename
+    get_filename_component(_file ${_dllname} NAME_WE)
+
+    # Build a list of all the spec files.
+    list(LENGTH _spec_files _len)
+    if(_len GREATER 1)
+        foreach(_spec_file ${_spec_files})
+            # Error out on anything else than spec
+            if(NOT ${_spec_file} MATCHES ".*\\.spec")
+                message(FATAL_ERROR "spec2def only takes spec files as input.")
+            endif()
+            # Retrieve the full file path
+            get_filename_component(_spec_file ${_spec_file} ABSOLUTE)
+            # Append to list
+            list(APPEND _source_file_list ${_spec_file})
+        endforeach()
+
+        # Generate the resulting spec file by concatenating all of them
+        set(_spec_file ${CMAKE_CURRENT_BINARY_DIR}/${_file}_spec.spec)
+        concatenate_files(${_spec_file} ${_source_file_list})
+        set_source_files_properties(${_spec_file} PROPERTIES GENERATED TRUE)
+
+    else()
+
+        set(_spec_file ${_spec_files})
+
+        # Error out on anything else than spec
+        if(NOT ${_spec_file} MATCHES ".*\\.spec")
+            message(FATAL_ERROR "spec2def only takes spec files as input.")
+        endif()
+
+        # Retrieve the full file path
+        get_filename_component(_spec_file ${_spec_file} ABSOLUTE)
+    endif()
+
+    if(__spec2def_WITH_RELAY)
+        set(__with_relay_arg "--with-tracing")
+    endif()
+
+    if(__spec2def_VERSION)
+        set(__version_arg "--version=0x${__spec2def_VERSION}")
+    endif()
+
+    # Generate exports def and C stubs file for the DLL
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_file}.def ${CMAKE_CURRENT_BINARY_DIR}/${_file}_stubs.c
+        COMMAND ${COMMAND_SPEC2DEF} -n=${_dllname} -d=${CMAKE_CURRENT_BINARY_DIR}/${_file}.def -s=${CMAKE_CURRENT_BINARY_DIR}/${_file}_stubs.c ${__with_relay_arg} ${__version_arg} ${_spec_file}
+        DEPENDS native-spec2def ${_spec_file})
+
+    if(__spec2def_ADD_IMPORTLIB)
+        if(MSVC)
+            generate_import_lib(lib${_file} ${_dllname} ${_spec_file})
+            if(__spec2def_NO_PRIVATE_WARNINGS)
+                set_property(TARGET lib${_file} APPEND PROPERTY STATIC_LIBRARY_OPTIONS /ignore:4104)
+            endif()
+        else()
+            set(_extraflags)
+            if(__spec2def_NO_PRIVATE_WARNINGS)
+                set(_extraflags --no-private-warnings)
+            endif()
+            generate_import_lib(lib${_file} ${_dllname} ${_spec_file} ${_extraflags})
+        endif()
+    endif()
 endfunction()
 
 # Create module_clean targets

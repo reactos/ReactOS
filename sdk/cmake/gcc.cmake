@@ -34,6 +34,9 @@ if(USE_DUMMY_PSEH)
     add_definitions(-D_USE_DUMMY_PSEH=1)
 endif()
 
+# PSEH lib, needed with mingw
+set(PSEH_LIB "pseh")
+
 if(STACK_PROTECTOR)
     add_compile_options(-fstack-protector-strong)
 endif()
@@ -169,13 +172,6 @@ endif()
 # Fix build with GLIBCXX + our c++ headers
 add_definitions(-D_GLIBCXX_HAVE_BROKEN_VSWPRINTF)
 
-# Alternative arch name
-if(ARCH STREQUAL "amd64")
-    set(ARCH2 x86_64)
-else()
-    set(ARCH2 ${ARCH})
-endif()
-
 if(SEPARATE_DBG)
     # PDB style debug puts all dwarf debug info in a separate dbg file
     message(STATUS "Building separate debug symbols")
@@ -270,6 +266,7 @@ endif()
 # We have to pass args to windres. one... by... one...
 set(CMAKE_DEPFILE_FLAGS_RC "--preprocessor=\"${CMAKE_C_COMPILER}\" ${RC_PREPROCESSOR_TARGET} --preprocessor-arg=-E --preprocessor-arg=-nostdinc --preprocessor-arg=-xc-header --preprocessor-arg=-MMD --preprocessor-arg=-MF --preprocessor-arg=<DEPFILE> --preprocessor-arg=-MT --preprocessor-arg=<OBJECT>")
 
+
 # Optional 3rd parameter: stdcall stack bytes
 function(set_entrypoint MODULE ENTRYPOINT)
     if(${ENTRYPOINT} STREQUAL "0")
@@ -344,12 +341,23 @@ function(fixup_load_config _target)
         DEPENDS native-pefixup)
 endfunction()
 
+# Alternative arch name
+if(ARCH STREQUAL "amd64")
+    set(SPEC2DEF_ARCH x86_64)
+else()
+    set(SPEC2DEF_ARCH ${ARCH})
+endif()
+
+set(COMMAND_SPEC2DEF native-spec2def -a=${SPEC2DEF_ARCH})
+
 function(generate_import_lib _libname _dllname _spec_file)
+    set(_def_file ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def)
+
     # Generate the def for the import lib
     add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def
-        COMMAND native-spec2def -n=${_dllname} -a=${ARCH2} ${ARGN} --implib -d=${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file} native-spec2def)
+        OUTPUT ${_def_file}
+        COMMAND ${COMMAND_SPEC2DEF} --implib ${ARGN} -n=${_dllname} -d=${_def_file} ${_spec_file}
+        DEPENDS native-spec2def ${_spec_file})
 
     # With this, we let DLLTOOL create an import library
     set(LIBRARY_PRIVATE_DIR ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/${_libname}.dir)
@@ -357,8 +365,8 @@ function(generate_import_lib _libname _dllname _spec_file)
         OUTPUT ${LIBRARY_PRIVATE_DIR}/${_libname}.a
         # ar just puts stuff into the archive, without looking twice. Just delete the lib, we're going to rebuild it anyway
         COMMAND ${CMAKE_COMMAND} -E rm -f $<TARGET_FILE:${_libname}>
-        COMMAND ${CMAKE_DLLTOOL} --def ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def --kill-at --output-lib=${_libname}.a -t ${_libname}
-        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def
+        COMMAND ${CMAKE_DLLTOOL} --def ${_def_file} --kill-at --output-lib=${_libname}.a -t ${_libname}
+        DEPENDS ${_def_file}
         WORKING_DIRECTORY ${LIBRARY_PRIVATE_DIR})
 
     # We create a static library with the importlib thus created as object. AR will extract the obj files and archive it again as a thin lib
@@ -379,8 +387,8 @@ function(generate_import_lib _libname _dllname _spec_file)
         OUTPUT ${LIBRARY_PRIVATE_DIR}/${_libname}_delayed.a
         # ar just puts stuff into the archive, without looking twice. Just delete the lib, we're going to rebuild it anyway
         COMMAND ${CMAKE_COMMAND} -E rm -f $<TARGET_FILE:${_libname}_delayed>
-        COMMAND ${CMAKE_DLLTOOL} --def ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def --kill-at --output-delaylib=${_libname}_delayed.a -t ${_libname}_delayed
-        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def
+        COMMAND ${CMAKE_DLLTOOL} --def ${_def_file} --kill-at --output-delaylib=${_libname}_delayed.a -t ${_libname}_delayed
+        DEPENDS ${_def_file}
         WORKING_DIRECTORY ${LIBRARY_PRIVATE_DIR})
 
     # We create a static library with the importlib thus created. AR will extract the obj files and archive it again as a thin lib
@@ -395,49 +403,6 @@ function(generate_import_lib _libname _dllname _spec_file)
         LINKER_LANGUAGE "C"
         PREFIX "")
 endfunction()
-
-function(spec2def _dllname _spec_file)
-
-    cmake_parse_arguments(__spec2def "ADD_IMPORTLIB;NO_PRIVATE_WARNINGS;WITH_RELAY" "VERSION" "" ${ARGN})
-
-    # Get library basename
-    get_filename_component(_file ${_dllname} NAME_WE)
-
-    # Error out on anything else than spec
-    if(NOT ${_spec_file} MATCHES ".*\\.spec")
-        message(FATAL_ERROR "spec2def only takes spec files as input.")
-    endif()
-
-    if(__spec2def_WITH_RELAY)
-        set(__with_relay_arg "--with-tracing")
-    endif()
-
-    if(__spec2def_VERSION)
-        set(__version_arg "--version=0x${__spec2def_VERSION}")
-    endif()
-
-    # Generate exports def and C stubs file for the DLL
-    add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_file}.def ${CMAKE_CURRENT_BINARY_DIR}/${_file}_stubs.c
-        COMMAND native-spec2def -n=${_dllname} -a=${ARCH2} -d=${CMAKE_CURRENT_BINARY_DIR}/${_file}.def -s=${CMAKE_CURRENT_BINARY_DIR}/${_file}_stubs.c ${__with_relay_arg} ${__version_arg} ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file} native-spec2def)
-
-    if(__spec2def_ADD_IMPORTLIB)
-        set(_extraflags)
-        if(__spec2def_NO_PRIVATE_WARNINGS)
-            set(_extraflags --no-private-warnings)
-        endif()
-
-        generate_import_lib(lib${_file} ${_dllname} ${_spec_file} ${_extraflags})
-    endif()
-endfunction()
-
-macro(macro_mc FLAG FILE)
-    set(COMMAND_MC ${CMAKE_MC_COMPILER} -u ${FLAG} -b -h ${CMAKE_CURRENT_BINARY_DIR}/ -r ${CMAKE_CURRENT_BINARY_DIR}/ ${FILE})
-endmacro()
-
-# PSEH lib, needed with mingw
-set(PSEH_LIB "pseh")
 
 function(CreateBootSectorTarget _target_name _asm_file _binary_file _base_address)
     set(_object_file ${_binary_file}.o)

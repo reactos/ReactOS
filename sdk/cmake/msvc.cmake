@@ -40,6 +40,9 @@ endif()
 # Disable buffer security checks by default.
 add_compile_options(/GS-)
 
+# PSEH workaround
+set(PSEH_LIB "pseh")
+
 if(USE_CLANG_CL)
     set(CMAKE_CL_SHOWINCLUDES_PREFIX "Note: including file: ")
 endif()
@@ -236,6 +239,7 @@ set(CMAKE_RC_CREATE_SHARED_MODULE ${CMAKE_C_CREATE_SHARED_MODULE})
 set(CMAKE_ASM_MASM_CREATE_SHARED_MODULE ${CMAKE_C_CREATE_SHARED_MODULE})
 set(CMAKE_ASM_CREATE_STATIC_LIBRARY ${CMAKE_C_CREATE_STATIC_LIBRARY})
 
+
 function(set_entrypoint _module _entrypoint)
     if(${_entrypoint} STREQUAL "0")
         target_link_options(${_module} PRIVATE "/NOENTRY")
@@ -314,16 +318,24 @@ function(fixup_load_config _target)
     # msvc knows how to generate a load_config so no hacks here
 endfunction()
 
-function(generate_import_lib _libname _dllname _spec_file)
+# Alternative arch name
+if(ARCH STREQUAL "amd64")
+    set(SPEC2DEF_ARCH x86_64)
+else()
+    set(SPEC2DEF_ARCH ${ARCH})
+endif()
 
+set(COMMAND_SPEC2DEF native-spec2def --ms -a=${SPEC2DEF_ARCH})
+
+function(generate_import_lib _libname _dllname _spec_file)
     set(_def_file ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_implib.def)
     set(_asm_stubs_file ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_stubs.asm)
 
     # Generate the def and asm stub files
     add_custom_command(
         OUTPUT ${_asm_stubs_file} ${_def_file}
-        COMMAND native-spec2def --ms -a=${SPEC2DEF_ARCH} --implib -n=${_dllname} -d=${_def_file} -l=${_asm_stubs_file} ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file} native-spec2def)
+        COMMAND ${COMMAND_SPEC2DEF} --implib -n=${_dllname} -d=${_def_file} -l=${_asm_stubs_file} ${_spec_file}
+        DEPENDS native-spec2def ${_spec_file})
 
     # Compile the generated asm stub file
     if(ARCH STREQUAL "arm" OR ARCH STREQUAL "arm64")
@@ -338,10 +350,9 @@ function(generate_import_lib _libname _dllname _spec_file)
 
     # generate the intermediate import lib
     set(_libfile_tmp ${CMAKE_CURRENT_BINARY_DIR}/${_libname}_tmp.lib)
-    set(_static_lib_options )
 
     set(_implib_command ${CMAKE_LINKER} /LIB /NOLOGO /MACHINE:${WINARCH}
-        $<TARGET_PROPERTY:${_libname},STATIC_LIBRARY_FLAGS> $<TARGET_PROPERTY:${_libname},STATIC_LIBRARY_OPTIONS>
+        $<TARGET_PROPERTY:${_libname},STATIC_LIBRARY_OPTIONS>
         /DEF:${_def_file} /OUT:${_libfile_tmp} ${_asm_stubs_file}.obj)
 
     add_custom_command(
@@ -356,61 +367,6 @@ function(generate_import_lib _libname _dllname _spec_file)
 
     set_target_properties(${_libname} PROPERTIES LINKER_LANGUAGE "C")
 endfunction()
-
-if(ARCH STREQUAL "amd64")
-    # This is NOT a typo.
-    # See https://software.intel.com/en-us/forums/topic/404643
-    add_definitions(/D__x86_64)
-    set(SPEC2DEF_ARCH x86_64)
-elseif(ARCH STREQUAL "arm")
-    add_definitions(/D__arm__)
-    set(SPEC2DEF_ARCH arm)
-elseif(ARCH STREQUAL "arm64")
-    add_definitions(/D__arm64__) 
-    set(SPEC2DEF_ARCH arm64)
-else()
-    set(SPEC2DEF_ARCH i386)
-endif()
-function(spec2def _dllname _spec_file)
-
-    cmake_parse_arguments(__spec2def "ADD_IMPORTLIB;NO_PRIVATE_WARNINGS;WITH_RELAY" "VERSION" "" ${ARGN})
-
-    # Get library basename
-    get_filename_component(_file ${_dllname} NAME_WE)
-
-    # Error out on anything else than spec
-    if(NOT ${_spec_file} MATCHES ".*\\.spec")
-        message(FATAL_ERROR "spec2def only takes spec files as input.")
-    endif()
-
-    if(__spec2def_WITH_RELAY)
-        set(__with_relay_arg "--with-tracing")
-    endif()
-
-    if(__spec2def_VERSION)
-        set(__version_arg "--version=0x${__spec2def_VERSION}")
-    endif()
-
-    # Generate exports def and C stubs file for the DLL
-    add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_file}.def ${CMAKE_CURRENT_BINARY_DIR}/${_file}_stubs.c
-        COMMAND native-spec2def --ms -a=${SPEC2DEF_ARCH} -n=${_dllname} -d=${CMAKE_CURRENT_BINARY_DIR}/${_file}.def -s=${CMAKE_CURRENT_BINARY_DIR}/${_file}_stubs.c ${__with_relay_arg} ${__version_arg} ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${_spec_file} native-spec2def)
-
-    if(__spec2def_ADD_IMPORTLIB)
-        generate_import_lib(lib${_file} ${_dllname} ${_spec_file})
-        if(__spec2def_NO_PRIVATE_WARNINGS)
-            set_property(TARGET lib${_file} APPEND PROPERTY STATIC_LIBRARY_OPTIONS /ignore:4104)
-        endif()
-    endif()
-endfunction()
-
-macro(macro_mc FLAG FILE)
-    set(COMMAND_MC ${CMAKE_MC_COMPILER} -u ${FLAG} -b -h ${CMAKE_CURRENT_BINARY_DIR}/ -r ${CMAKE_CURRENT_BINARY_DIR}/ ${FILE})
-endmacro()
-
-# PSEH workaround
-set(PSEH_LIB "pseh")
 
 # Use a full path for the x86 version of ml when using x64 VS.
 # It's not a problem when using the DDK/WDK because, in x64 mode,
