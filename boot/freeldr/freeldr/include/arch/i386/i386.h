@@ -29,7 +29,9 @@
 
 /* Bits to shift to convert a Virtual Address into an Offset in the Page Directory */
 #define PDE_SHIFT 22
-#define PDE_SHIFT_PAE 18
+
+#define PDE_PER_PAGE (PAGE_SIZE / sizeof(HARDWARE_PDE_X86)) // 0x400 (1024)
+#define PTE_PER_PAGE (PAGE_SIZE / sizeof(HARDWARE_PTE_X86)) // 0x400 (1024)
 
 /* Converts a Physical Address Pointer into a Page Frame Number */
 #define PaPtrToPfn(p) \
@@ -40,14 +42,19 @@
     ((p) >> PFN_SHIFT)
 
 #define STARTUP_BASE                0xC0000000
+#define SELFMAP_ENTRY               0x300
 
 #define LowMemPageTableIndex        0
 #define StartupPageTableIndex       (STARTUP_BASE >> 22)
 #define HalPageTableIndex           (HAL_BASE >> 22)
 
+#define APIC_BASE_PTE_IDX   ((APIC_BASE - 0xFFC00000) >> MM_PAGE_SHIFT)
+#define USER_SHARED_PTE_IDX ((KI_USER_SHARED_DATA - 0xFFC00000) >> MM_PAGE_SHIFT)
+#define PCR0_PTE_IDX        ((KIP0PCRADDRESS - 0xFFC00000) >> MM_PAGE_SHIFT)
+
 typedef struct _PAGE_DIRECTORY_X86
 {
-    HARDWARE_PTE Pde[1024];
+    HARDWARE_PTE_X86 Pde[1024];
 } PAGE_DIRECTORY_X86, *PPAGE_DIRECTORY_X86;
 
 void __cdecl i386DivideByZero(void);

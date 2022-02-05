@@ -29,12 +29,9 @@ PLOADER_SYSTEM_BLOCK WinLdrSystemBlock;
 
 BOOLEAN VirtualBias = FALSE;
 BOOLEAN SosEnabled = FALSE;
-BOOLEAN PaeEnabled = FALSE;
-BOOLEAN PaeDisabled = FALSE;
 BOOLEAN SafeBoot = FALSE;
 BOOLEAN BootLogo = FALSE;
-BOOLEAN NoexecuteDisabled = FALSE;
-BOOLEAN NoexecuteEnabled = FALSE;
+BOOLEAN PaeModeOn = FALSE;
 
 // debug stuff
 VOID DumpMemoryAllocMap(VOID);
@@ -498,6 +495,69 @@ LoadModule(
 
 static
 BOOLEAN
+WinLdrIsPaeSupported(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
+                     IN PCSTR BootOptions,
+                     IN USHORT OperatingSystemVersion,
+                     IN PCHAR KernelFileName,
+                     IN PCHAR HalFileName)
+{
+    BOOLEAN PaeEnabled = FALSE;
+    BOOLEAN PaeDisabled = FALSE;
+    BOOLEAN NoexecuteDisabled = FALSE;
+    BOOLEAN NoexecuteEnabled = FALSE;
+    BOOLEAN Result;
+
+    UNIMPLEMENTED;
+
+    if (OperatingSystemVersion > _WIN32_WINNT_NT4 &&
+        NtLdrGetOption(BootOptions, "PAE"))
+    {
+        /* We found the PAE option. */
+        PaeEnabled = TRUE;
+    }
+
+    Result = PaeEnabled;
+
+    if (OperatingSystemVersion > _WIN32_WINNT_WIN2K)
+    {
+        if (NtLdrGetOption(BootOptions, "NOPAE"))
+            PaeDisabled = TRUE;
+
+        if (!LoaderBlock->SetupLdrBlock)
+        {
+            if (NtLdrGetOption(BootOptions, "NOEXECUTE=ALWAYSOFF"))
+                NoexecuteDisabled = TRUE;
+            else if (NtLdrGetOption(BootOptions, "NOEXECUTE"))
+                NoexecuteEnabled = TRUE;
+
+            if (NtLdrGetOption(BootOptions, "EXECUTE") && !NoexecuteEnabled)
+                NoexecuteDisabled = TRUE;
+        }
+    }
+
+    if (SafeBoot)
+    {
+        PaeDisabled = TRUE;
+        NoexecuteDisabled = TRUE;
+    }
+
+    TRACE("NoexecuteDisabled %X\n", NoexecuteDisabled);
+    TRACE("PaeEnabled %X, PaeDisabled %X\n", PaeEnabled, PaeDisabled);
+
+    if (PaeDisabled)
+        Result = FALSE;
+
+    if (NoexecuteDisabled == FALSE)
+        Result = TRUE;
+
+    // FIXME checks for CPU support, hotplug memory support .. other tests
+    // FIXME select kernel name ("ntkrnlpa.exe" or ntoskrnl.exe")
+
+    return Result;
+}
+
+static
+BOOLEAN
 LoadWindowsCore(IN USHORT OperatingSystemVersion,
                 IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock,
                 IN PCSTR BootOptions,
@@ -629,65 +689,24 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
         SosEnabled = TRUE;
     }
 
-    if (OperatingSystemVersion > _WIN32_WINNT_NT4)
+    if (OperatingSystemVersion > _WIN32_WINNT_NT4 &&
+        NtLdrGetOption(BootOptions, "SAFEBOOT"))
     {
-        if (NtLdrGetOption(BootOptions, "SAFEBOOT"))
-        {
-            /* We found the SAFEBOOT option. */
-            FIXME("LoadWindowsCore: SAFEBOOT - TRUE (not implemented)\n");
-            SafeBoot = TRUE;
-        }
-        if (NtLdrGetOption(BootOptions, "PAE"))
-        {
-            /* We found the PAE option. */
-            FIXME("LoadWindowsCore: PAE - TRUE (not implemented)\n");
-            PaeEnabled = TRUE;
-        }
+        /* We found the SAFEBOOT option. */
+        FIXME("LoadWindowsCore: SAFEBOOT - TRUE (not implemented)\n");
+        SafeBoot = TRUE;
     }
 
-    if (OperatingSystemVersion > _WIN32_WINNT_WIN2K)
+    if (OperatingSystemVersion > _WIN32_WINNT_WIN2K &&
+        NtLdrGetOption(BootOptions, "BOOTLOGO"))
     {
-        if (NtLdrGetOption(BootOptions, "NOPAE"))
-        {
-            /* We found the NOPAE option. */
-            FIXME("LoadWindowsCore: NOPAE - TRUE (not implemented)\n");
-            PaeDisabled = TRUE;
-        }
-        if (NtLdrGetOption(BootOptions, "BOOTLOGO"))
-        {
-            /* We found the BOOTLOGO option. */
-            FIXME("LoadWindowsCore: BOOTLOGO - TRUE (not implemented)\n");
-            BootLogo = TRUE;
-        }
-
-        if (!LoaderBlock->SetupLdrBlock)
-        {
-            if (NtLdrGetOption(BootOptions, "EXECUTE"))
-            {
-                /* We found the EXECUTE option. */
-                FIXME("LoadWindowsCore: EXECUTE - TRUE (not implemented)\n");
-                NoexecuteDisabled = TRUE;
-            }
-            if (NtLdrGetOption(BootOptions, "NOEXECUTE=ALWAYSOFF"))
-            {
-                /* We found the NOEXECUTE=ALWAYSOFF option. */
-                FIXME("LoadWindowsCore: NOEXECUTE=ALWAYSOFF - TRUE (not implemented)\n");
-                NoexecuteDisabled = TRUE;
-            }
-            if (NtLdrGetOption(BootOptions, "NOEXECUTE"))
-            {
-                /* We found the NOEXECUTE option. */
-                FIXME("LoadWindowsCore: NOEXECUTE - TRUE (not implemented)\n");
-                NoexecuteEnabled = TRUE;
-            }
-        }
+        /* We found the BOOTLOGO option. */
+        FIXME("LoadWindowsCore: BOOTLOGO - TRUE (not implemented)\n");
+        BootLogo = TRUE;
     }
 
-    if (SafeBoot)
-    {
-        PaeDisabled = TRUE;
-        NoexecuteDisabled = TRUE;
-    }
+    PaeModeOn = WinLdrIsPaeSupported(LoaderBlock, BootOptions, OperatingSystemVersion, KernelFileName, HalFileName);
+    FIXME("WinLdrIsPaeSupported: PaeModeOn %X\n", PaeModeOn);
 
     /* Load all referenced DLLs for Kernel, HAL and Kernel Debugger Transport DLL */
     Success  = PeLdrScanImportDescriptorTable(&LoaderBlock->LoadOrderListHead, DirPath, *KernelDTE);
@@ -1031,8 +1050,17 @@ LoadAndBootWindowsCommon(
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
-    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
-          KiSystemStartup, LoaderBlockVA);
+    if (PaeModeOn)
+    {
+        /* No PAE support for kernel (no ntkrnlpa.exe) */
+        FIXME("Hello from PAE paged mode! KiSystemStartup %p, LoaderBlockVA %p\n", KiSystemStartup, LoaderBlockVA);
+        BugCheck("No PAE support for kernel!\n");
+    }
+    else
+    {
+        TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+              KiSystemStartup, LoaderBlockVA);
+    }
 
     /* Zero KI_USER_SHARED_DATA page */
     RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
