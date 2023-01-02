@@ -564,7 +564,7 @@ UserFreeWindowInfo(PTHREADINFO ti, PWND Wnd)
  * Destroy storage associated to a window. "Internals" p.358
  *
  * This is the "functional" DestroyWindows function i.e. all stuff
- * done in CreateWindow is undone here and not in DestroyWindow :-P
+ * done in IntCreateWindow is undone here and not in DestroyWindow :-P
  */
 LRESULT co_UserFreeWindow(PWND Window,
                           PPROCESSINFO ProcessData,
@@ -585,14 +585,19 @@ LRESULT co_UserFreeWindow(PWND Window,
       return 0;
    }
    Window->state2 |= WNDS2_INDESTROY;
+
+   if (Window->style & WS_VISIBLE) Window->head.pti->cVisWindows--;
    Window->style &= ~WS_VISIBLE;
-   Window->head.pti->cVisWindows--;
 
+   /*ERR*/TRACE("FREE Window 0x%p\n", Window);
 
-   /* remove the window already at this point from the thread window list so we
-      don't get into trouble when destroying the thread windows while we're still
-      in co_UserFreeWindow() */
-   RemoveEntryList(&Window->ThreadListEntry);
+   /*
+    * For simplicity purposes, do the following list unlinkings here,
+    * even though in theory they should be done instead by any caller
+    * to co_UserFreeWindow() since those are initialized in success cases
+    * by co_UserCreateWindowEx().
+    */
+   IntUnlinkWindow(Window);
 
    BelongsToThreadData = IntWndBelongsToThread(Window, ThreadData);
 
@@ -609,7 +614,7 @@ LRESULT co_UserFreeWindow(PWND Window,
             if (!IntWndBelongsToThread(Child, ThreadData))
             {
                /* send WM_DESTROY messages to windows not belonging to the same thread */
-               co_IntSendMessage( UserHMGetHandle(Child), WM_ASYNC_DESTROYWINDOW, 0, 0 );
+               co_IntSendMessage(UserHMGetHandle(Child), WM_ASYNC_DESTROYWINDOW, 0, 0);
             }
             else
                co_UserFreeWindow(Child, ProcessData, ThreadData, SendMessages);
@@ -713,18 +718,16 @@ LRESULT co_UserFreeWindow(PWND Window,
         && (Menu = UserGetMenuObject(Window->SystemMenu)))
    {
       IntDestroyMenuObject(Menu, TRUE);
-      Window->SystemMenu = (HMENU)0;
+      Window->SystemMenu = NULL;
    }
 
    DceFreeWindowDCE(Window);    /* Always do this to catch orphaned DCs */
-
-   IntUnlinkWindow(Window);
 
    if (Window->PropListItems)
    {
       UserRemoveWindowProps(Window);
       TRACE("Window->PropListItems %lu\n",Window->PropListItems);
-      ASSERT(Window->PropListItems==0);
+      ASSERT(Window->PropListItems == 0);
    }
 
    UserReferenceObject(Window);
@@ -751,9 +754,9 @@ LRESULT co_UserFreeWindow(PWND Window,
       GreDeleteObject(Window->hrgnClip);
       Window->hrgnClip = NULL;
    }
+
    Window->head.pti->cWindows--;
 
-//   ASSERT(Window != NULL);
    UserFreeWindowInfo(Window->head.pti, Window);
 
    UserDereferenceObject(Window);
@@ -1626,9 +1629,6 @@ NtUserBuildHwndList(
          goto Quit;
       }
 
-     // Do not use Thread link list due to co_UserFreeWindow!!!
-     // Current = W32Thread->WindowListHead.Flink;
-     // Fixes Api:CreateWindowEx tests!!!
       List = IntWinListChildren(UserGetDesktopWindow());
       if (List)
       {
@@ -1854,7 +1854,7 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
       goto AllocError;
    }
 
-   TRACE("Created window object with handle %p\n", hWnd);
+   /*ERR*/TRACE("Created window object 0x%p with handle %p\n", pWnd, hWnd);
 
    if (pdeskCreated && pdeskCreated->DesktopWindow == NULL )
    {  /* HACK: Helper for win32csr/desktopbg.c */
@@ -2154,9 +2154,6 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
        }
    }
 
-   /* Insert the window into the thread's window list. */
-   InsertTailList (&pti->WindowListHead, &pWnd->ThreadListEntry);
-
    /* Handle "CS_CLASSDC", it is tested first. */
    if ( (pWnd->pcls->style & CS_CLASSDC) && !(pWnd->pcls->pdce) )
    {  /* One DCE per class to have CLASS. */
@@ -2173,8 +2170,13 @@ AllocError:
    ERR("IntCreateWindow Allocation Error.\n");
    SetLastNtError(STATUS_INSUFFICIENT_RESOURCES);
 Error:
-   if(pWnd)
+   if (pWnd)
+   {
+      __debugbreak();
+      // /* Release the extra reference (UserCreateObject added 2 references) */
       UserDereferenceObject(pWnd);
+      // co_UserFreeWindow(pWnd, pti->ppi, pti, FALSE);
+   }
    return NULL;
 }
 
@@ -2841,6 +2843,7 @@ VOID FASTCALL IntDestroyOwnedWindows(PWND Window)
     ExFreePoolWithTag(List, USERTAG_WINDOWLIST);
 }
 
+// Destroys a window created with co_UserCreateWindowEx().
 // Win: xxxDestroyWindow
 BOOLEAN co_UserDestroyWindow(PVOID Object)
 {
@@ -2855,7 +2858,7 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
    hWnd = Window->head.h;
    ti = PsGetCurrentThreadWin32Thread();
 
-   TRACE("co_UserDestroyWindow(Window = 0x%p, hWnd = 0x%p)\n", Window, hWnd);
+   /*ERR*/TRACE("co_UserDestroyWindow(Window = 0x%p, hWnd = 0x%p)\n", Window, hWnd);
 
    /* Check for owner thread */
    if (Window->head.pti != ti)
@@ -3006,7 +3009,7 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
    }
 
    /* Destroy the window storage */
-   co_UserFreeWindow(Window, PsGetCurrentProcessWin32Process(), PsGetCurrentThreadWin32Thread(), TRUE);
+   co_UserFreeWindow(Window, ti->ppi, ti, TRUE);
 
    return TRUE;
 }
