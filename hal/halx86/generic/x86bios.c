@@ -9,7 +9,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <hal.h>
-//#define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 #include <fast486.h>
@@ -19,15 +19,17 @@
 /* This page serves as fallback for pages used by Mm */
 PFN_NUMBER x86BiosFallbackPfn;
 
-BOOLEAN x86BiosIsInitialized;
+BOOLEAN x86BiosInitialized;
 LONG x86BiosBufferIsAllocated = 0;
 PUCHAR x86BiosMemoryMapping;
 
 /* This the physical address of the bios buffer */
 ULONG64 x86BiosBufferPhysical;
 
+/* The internal emulator context */
+static FAST486_STATE EmulatorContext;
+
 VOID
-NTAPI
 DbgDumpPage(PUCHAR MemBuffer, USHORT Segment)
 {
     ULONG x, y, Offset;
@@ -237,7 +239,6 @@ HalInitializeBios(
     }
     else
     {
-
         /* Allocate an MDL for 1MB */
         Mdl = IoAllocateMdl(NULL, 0x100000, FALSE, FALSE, NULL);
         if (!Mdl)
@@ -295,7 +296,18 @@ HalInitializeBios(
         DPRINT1("memory: %p, %p\n", *(PVOID*)x86BiosMemoryMapping, *(PVOID*)(x86BiosMemoryMapping + 8));
         //DbgDumpPage(x86BiosMemoryMapping, 0xc351);
 
-        x86BiosIsInitialized = TRUE;
+        /* Initialize the emulator context */
+        Fast486Initialize(&EmulatorContext,
+                          x86MemRead,
+                          x86MemWrite,
+                          x86IoRead,
+                          x86IoWrite,
+                          x86BOP,
+                          x86IntAck,
+                          NULL,  // FpuCallback,
+                          NULL); // Tlb
+
+        x86BiosInitialized = TRUE;
 
         HalpBiosDisplayReset();
     }
@@ -309,7 +321,7 @@ x86BiosAllocateBuffer(
     _In_ USHORT *Offset)
 {
     /* Check if the system is initialized and the buffer is large enough */
-    if (!x86BiosIsInitialized || (*Size > PAGE_SIZE))
+    if (!x86BiosInitialized || (*Size > PAGE_SIZE))
     {
         /* Something was wrong, fail! */
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -337,7 +349,7 @@ x86BiosFreeBuffer(
     _In_ USHORT Offset)
 {
     /* Check if the system is initialized and if the address matches */
-    if (!x86BiosIsInitialized || (Segment != 0x2000) || (Offset != 0))
+    if (!x86BiosInitialized || (Segment != 0x2000) || (Offset != 0))
     {
         /* Something was wrong, fail */
         return STATUS_INVALID_PARAMETER;
@@ -368,7 +380,7 @@ x86BiosReadMemory(
     Address = (Segment << 4) + Offset;
 
     /* Check if it's valid */
-    if (!x86BiosIsInitialized || ((Address + Size) > 0x100000))
+    if (!x86BiosInitialized || ((Address + Size) > 0x100000))
     {
         /* Invalid */
         return STATUS_INVALID_PARAMETER;
@@ -395,7 +407,7 @@ x86BiosWriteMemory(
     Address = (Segment << 4) + Offset;
 
     /* Check if it's valid */
-    if (!x86BiosIsInitialized || ((Address + Size) > 0x100000))
+    if (!x86BiosInitialized || ((Address + Size) > 0x100000))
     {
         /* Invalid */
         return STATUS_INVALID_PARAMETER;
@@ -418,7 +430,6 @@ x86BiosCall(
     _Inout_ PX86_BIOS_REGISTERS Registers)
 {
     const ULONG StackBase = 0x2000;
-    FAST486_STATE EmulatorContext;
     BOOLEAN Success = FALSE;
     ULONG Count;
     ULONG FlatIp;
@@ -449,16 +460,13 @@ x86BiosCall(
         goto Quit;
     }
 
-    /* Initialize the emulator context */
-    Fast486Initialize(&EmulatorContext,
-                      x86MemRead,
-                      x86MemWrite,
-                      x86IoRead,
-                      x86IoWrite,
-                      x86BOP,
-                      x86IntAck,
-                      NULL,  // FpuCallback,
-                      NULL); // Tlb
+    /* Check if the system is initialized */
+    if (!x86BiosInitialized)
+    {
+        /* It's not, fail the call */
+        DPRINT1("X86 BIOS emulator not yet initialized!\n");
+        goto Quit;
+    }
 
     /* Copy the registers */
     EmulatorContext.GeneralRegs[FAST486_REG_EAX].Long = Registers->Eax;
