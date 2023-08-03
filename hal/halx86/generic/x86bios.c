@@ -148,6 +148,7 @@ ValidatePort(
 
     /* Allow but report unknown ports, we trust the BIOS for now */
     DPRINT1("Unknown port 0x%x, size %d, write %d\n", Port, Size, IsWrite);
+    // KeBugCheck(0xffffffff);
     return TRUE;
 }
 
@@ -563,7 +564,7 @@ BOOLEAN
 NTAPI
 HalpBiosDisplayReset(VOID)
 {
-#if 0
+#if 1
     X86_BIOS_REGISTERS Registers;
     ULONG OldEflags;
     BOOLEAN Success, InReset;
