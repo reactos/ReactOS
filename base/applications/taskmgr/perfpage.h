@@ -11,13 +11,14 @@
 extern "C" {
 #endif
 
-extern HWND hPerformancePage;   /* Performance Property Page */
 INT_PTR CALLBACK PerformancePageWndProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 void RefreshPerformancePage(void);
 void PerformancePage_OnViewShowKernelTimes(void);
-void PerformancePage_OnViewCPUHistoryOneGraphAll(void);
-void PerformancePage_OnViewCPUHistoryOneGraphPerCPU(void);
+
+VOID
+PerformancePage_OnViewCPUHistoryGraph(
+    _In_ BOOL bShowAll);
 
 #ifdef __cplusplus
 };
