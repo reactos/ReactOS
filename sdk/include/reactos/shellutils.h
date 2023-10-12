@@ -111,7 +111,7 @@ retry:
             goto retry;                  // and try again.
         }
         cch = LoadStringW(LoadLibraryW(L"USER32"), u32_errstr, buf, _countof(buf));
-        StringCchPrintfW(buf + cch, _countof(buf) - cch, L"\n\n%#x (%d)", Error, Error);
+        wsprintfW(buf + cch, L"\n\n%#x (%d)", Error, Error);
     }
     MessageBoxW(hwndOwner, buf, NULL, MB_OK | MB_ICONSTOP);
     return Error;
