@@ -479,71 +479,76 @@ typedef struct {
     BOOL Safer;
 } RUNASDLGDATA;
 
-static INT_PTR CALLBACK RunAsDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static
+INT_PTR
+CALLBACK
+RunAsDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    RUNASDLGDATA *pData = (RUNASDLGDATA *)GetWindowLongPtr(hwnd, DWLP_USER);
-    switch(uMsg)
+    RUNASDLGDATA *pData = (RUNASDLGDATA *)GetWindowLongPtrW(hwnd, DWLP_USER);
+    switch (uMsg)
     {
         case WM_INITDIALOG:
-            {
-                SetWindowLongPtr(hwnd, DWLP_USER, (LPARAM)(pData = (RUNASDLGDATA *)lParam));
-                SendDlgItemMessage(hwnd, IDC_RUNAS_NAME, EM_LIMITTEXT, _countof(RUNASDLGDATA::NameBuffer)-1, 0);
-                SendDlgItemMessage(hwnd, IDC_RUNAS_PASS, EM_LIMITTEXT, _countof(RUNASDLGDATA::Pass)-1, 0);
-                SendDlgItemMessage(hwnd, IDC_RUNAS_OTHER, BM_CLICK, 0, 0);
+        {
+            SetWindowLongPtrW(hwnd, DWLP_USER, (LPARAM)(pData = (RUNASDLGDATA *)lParam));
+            SendDlgItemMessageW(hwnd, IDC_RUNAS_NAME, EM_LIMITTEXT, _countof(RUNASDLGDATA::NameBuffer)-1, 0);
+            SendDlgItemMessageW(hwnd, IDC_RUNAS_PASS, EM_LIMITTEXT, _countof(RUNASDLGDATA::Pass)-1, 0);
+            SendDlgItemMessageW(hwnd, IDC_RUNAS_OTHER, BM_CLICK, 0, 0);
 
-                HWND control = GetDlgItem(hwnd, IDC_RUNAS_THIS);
-                WCHAR fmtbuf[200], buf[_countof(fmtbuf) + _countof(RUNASDLGDATA::NameBuffer)];
-                DWORD cch = _countof(RUNASDLGDATA::NameBuffer);
-                if (GetUserName(pData->NameBuffer, &cch))
-                {
-                    SendMessage(control, WM_GETTEXT, _countof(fmtbuf), (LPARAM)buf);
-                    wsprintfW(fmtbuf, buf, L"(%s)"); // Change "Blah blah %s" to "Blah blah (%s)"
-                    wsprintfW(buf, fmtbuf, pData->NameBuffer);
-                    SendMessage(control, WM_SETTEXT, 0, (LPARAM)buf);
-                    SendDlgItemMessage(hwnd, IDC_RUNAS_NAME, CB_ADDSTRING, 0, (LPARAM)pData->NameBuffer);
-                }
-                SendDlgItemMessage(hwnd, IDC_RUNAS_NAME, CB_SETCURSEL, 0, 0);
-                return TRUE;
+            HWND control = GetDlgItem(hwnd, IDC_RUNAS_THIS);
+            WCHAR fmtbuf[200], buf[_countof(fmtbuf) + _countof(RUNASDLGDATA::NameBuffer)];
+            DWORD cch = _countof(RUNASDLGDATA::NameBuffer);
+            if (GetUserNameW(pData->NameBuffer, &cch))
+            {
+                SendMessageW(control, WM_GETTEXT, _countof(fmtbuf), (LPARAM)buf);
+                StringCchPrintfW(fmtbuf, _countof(fmtbuf), buf, L"(%s)"); // Change "Blah blah %s" to "Blah blah (%s)"
+                StringCchPrintfW(buf, _countof(buf), fmtbuf, pData->NameBuffer);
+                SendMessageW(control, WM_SETTEXT, 0, (LPARAM)buf);
+                SendDlgItemMessageW(hwnd, IDC_RUNAS_NAME, CB_ADDSTRING, 0, (LPARAM)pData->NameBuffer);
             }
-            break;
+            SendDlgItemMessageW(hwnd, IDC_RUNAS_NAME, CB_SETCURSEL, 0, 0);
+            return TRUE;
+        }
+
         case WM_COMMAND:
-            switch(LOWORD(wParam))
+            switch (LOWORD(wParam))
             {
                 case IDCANCEL:
                     EndDialog(hwnd, 1);
                     break;
+
                 case IDOK:
+                {
+                    pData->Safer = SendDlgItemMessageW(hwnd, IDC_RUNAS_SAFER,
+                                                      BM_GETCHECK, 0, 0);
+                    SendDlgItemMessageW(hwnd, IDC_RUNAS_NAME, WM_GETTEXT,
+                                       _countof(RUNASDLGDATA::NameBuffer), (LPARAM)pData->NameBuffer);
+                    SendDlgItemMessageW(hwnd, IDC_RUNAS_PASS, WM_GETTEXT,
+                                       _countof(RUNASDLGDATA::Pass), (LPARAM)pData->Pass);
+                    UINT other = SendDlgItemMessageW(hwnd, IDC_RUNAS_OTHER,
+                                                    BM_GETCHECK, 0, 0) != 0;
+                    pData->Name = pData->NameBuffer;
+                    pData->Domain = strstrW(pData->Name, L"\\");
+                    if (pData->Domain)
                     {
-                        pData->Safer = SendDlgItemMessage(hwnd, IDC_RUNAS_SAFER,
-                                                          BM_GETCHECK, 0, 0);
-                        SendDlgItemMessage(hwnd, IDC_RUNAS_NAME, WM_GETTEXT,
-                                           _countof(RUNASDLGDATA::NameBuffer), (LPARAM)pData->NameBuffer);
-                        SendDlgItemMessage(hwnd, IDC_RUNAS_PASS, WM_GETTEXT,
-                                           _countof(RUNASDLGDATA::Pass), (LPARAM)pData->Pass);
-                        UINT other = SendDlgItemMessage(hwnd, IDC_RUNAS_OTHER,
-                                                        BM_GETCHECK, 0, 0) != 0;
-                        pData->Name = pData->NameBuffer;
-                        pData->Domain = strstrW(pData->Name, L"\\");
-                        if (pData->Domain)
-                        {
-                            LPWSTR tmp = pData->Domain + 1;
-                            pData->Domain[0] = UNICODE_NULL;
-                            pData->Domain = pData->Name;
-                            pData->Name = tmp;
-                        }
-                        if (other)
-                        {
-                            HANDLE token;
-                            if (!LogonUser(pData->Name, pData->Domain, pData->Pass,
-                                           LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT,
-                                           &token))
-                                return SHELL_ErrorBox(hwnd);
-                            CloseHandle(token);
-                            other |= (GetKeyState(VK_SHIFT) & 0x8000);
-                        }
-                        EndDialog(hwnd, 2 + other);
+                        LPWSTR tmp = pData->Domain + 1;
+                        pData->Domain[0] = UNICODE_NULL;
+                        pData->Domain = pData->Name;
+                        pData->Name = tmp;
                     }
+                    if (other)
+                    {
+                        HANDLE token;
+                        if (!LogonUserW(pData->Name, pData->Domain, pData->Pass,
+                                       LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT,
+                                       &token))
+                            return SHELL_ErrorBox(hwnd);
+                        CloseHandle(token);
+                        other |= (GetKeyState(VK_SHIFT) & 0x8000);
+                    }
+                    EndDialog(hwnd, 2 + other);
                     break;
+                }
+
                 case IDC_RUNAS_BROWSE:
                     return SHELL_ErrorBox(hwnd, ERROR_CALL_NOT_IMPLEMENTED); // TODO
             }
@@ -552,9 +557,16 @@ static INT_PTR CALLBACK RunAsDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     return FALSE;
 }
 
-static HRESULT SHELL_PromptAndRunProcessAs(HWND hwnd, LPWSTR Cmd, DWORD CreationFlags,
-                                           LPWSTR Env, LPCWSTR Dir,
-                                           STARTUPINFOW *pSI, PROCESS_INFORMATION *pPI)
+static
+HRESULT
+SHELL_PromptAndRunProcessAs(
+    _In_opt_ HWND hwnd,
+    _In_ LPWSTR Cmd,
+    _In_ DWORD CreationFlags,
+    _In_opt_ LPWSTR Env,
+    _In_opt_ LPCWSTR Dir,
+    _In_ STARTUPINFOW *pSI,
+    _Out_ PROCESS_INFORMATION *pPI)
 {
     RUNASDLGDATA data;
     INT_PTR dlgret = DialogBoxParamW(shell32_hInstance, MAKEINTRESOURCEW(IDD_RUN_AS),
@@ -575,7 +587,7 @@ static HRESULT SHELL_PromptAndRunProcessAs(HWND hwnd, LPWSTR Cmd, DWORD Creation
         SetLastError(ERROR_CANCELLED);
         return S_FALSE;
     }
-    SecureZeroMemory(&data, sizeof(RUNASDLGDATA));
+    SecureZeroMemory(&data, sizeof(data));
     if (dlgret == 0 || dlgret == -1)
     {
         pPI->hProcess = NULL;

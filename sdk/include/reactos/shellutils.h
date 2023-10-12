@@ -107,11 +107,11 @@ retry:
     {
         if (HIWORD(msgId) == HIWORD(HRESULT_FROM_WIN32(1)))
         {
-            msgId = LOWORD(msgId);
-            goto retry;
+            msgId = HRESULT_CODE(msgId); // Extract ERROR_ from HRESULT_FROM_WIN32
+            goto retry;                  // and try again.
         }
-        cch = LoadStringW(LoadLibrary(TEXT("USER32")), u32_errstr, buf, _countof(buf));
-        wsprintfW(buf + cch, L"\n\n%#x (%d)", Error, Error);
+        cch = LoadStringW(LoadLibraryW(L"USER32"), u32_errstr, buf, _countof(buf));
+        StringCchPrintfW(buf + cch, _countof(buf) - cch, L"\n\n%#x (%d)", Error, Error);
     }
     MessageBoxW(hwndOwner, buf, NULL, MB_OK | MB_ICONSTOP);
     return Error;
