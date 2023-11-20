@@ -34,6 +34,22 @@ PKPRCB KiProcessorBlock[MAXIMUM_PROCESSORS];
 /* Number of processors */
 CCHAR KeNumberProcessors = 0;
 
+#ifdef CONFIG_SMP
+
+/* Theoretical maximum number of processors that can be handled.
+ * Set once at run-time. Returned by KeQueryMaximumProcessorCount(). */
+ULONG KeMaximumProcessors = MAXIMUM_PROCESSORS;
+
+/* Maximum number of logical processors that can be started
+ * (including dynamically) at run-time. If 0: do not perform checks. */
+ULONG KeNumprocSpecified = 0;
+
+/* Maximum number of logical processors that can be started
+ * at boot-time. If 0: do not perform checks. */
+ULONG KeBootprocSpecified = 0;
+
+#endif // CONFIG_SMP
+
 /* NUMA Node Support */
 KNODE KiNode0;
 PKNODE KeNodeBlock[1];

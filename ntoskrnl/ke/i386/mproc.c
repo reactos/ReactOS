@@ -9,6 +9,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -37,13 +38,29 @@ VOID
 NTAPI
 KeStartAllProcessors(VOID)
 {
-    PVOID KernelStack, DPCStack;
-    SIZE_T ProcessorCount = 0;
     PAPINFO APInfo;
+    PVOID KernelStack, DPCStack;
+    ULONG ProcessorCount;
+    ULONG MaximumProcessors;
 
-    while (TRUE)
+    // NOTE: NT6+ HAL exports HalEnumerateProcessors() and
+    // HalQueryMaximumProcessorCount() that help determining
+    // the number of detected processors on the system.
+    MaximumProcessors = KeMaximumProcessors;
+
+    /* Limit the number of processors we can start at run-time */
+    if (KeNumprocSpecified)
+        MaximumProcessors = min(MaximumProcessors, KeNumprocSpecified);
+
+    /* Limit also the number of processors we can start during boot-time */
+    if (KeBootprocSpecified)
+        MaximumProcessors = min(MaximumProcessors, KeBootprocSpecified);
+
+    // TODO: Support processor nodes
+
+    /* Start ProcessorCount at 1 because we already have the boot CPU */
+    for (ProcessorCount = 1; ProcessorCount < MaximumProcessors; ++ProcessorCount)
     {
-        ProcessorCount++;
         KernelStack = NULL;
         DPCStack = NULL;
 
