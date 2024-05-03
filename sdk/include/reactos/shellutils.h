@@ -92,24 +92,17 @@ static inline UINT
 SHELL_ErrorBoxHelper(HWND hwndOwner, UINT Error)
 {
     WCHAR buf[400];
-    UINT cch, msgId, u32_errstr = 2;
+    UINT cch, u32_errstr = 2;
 
     if (!IsWindowVisible(hwndOwner))
         hwndOwner = NULL;
     if (Error == ERROR_SUCCESS)
         Error = ERROR_INTERNAL_ERROR;
 
-    msgId = Error;
-retry:
     cch = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                         NULL, msgId, 0, buf, _countof(buf), NULL);
+                         NULL, Error, 0, buf, _countof(buf), NULL);
     if (!cch)
     {
-        if (HIWORD(msgId) == HIWORD(HRESULT_FROM_WIN32(1)))
-        {
-            msgId = HRESULT_CODE(msgId); // Extract ERROR_ from HRESULT_FROM_WIN32
-            goto retry;                  // and try again.
-        }
         cch = LoadStringW(LoadLibraryW(L"USER32"), u32_errstr, buf, _countof(buf));
         wsprintfW(buf + cch, L"\n\n%#x (%d)", Error, Error);
     }
@@ -120,7 +113,7 @@ retry:
 template<class H> static UINT
 SHELL_ErrorBox(H hwndOwner, UINT Error = GetLastError())
 {
-    return SHELL_ErrorBoxHelper(hwndOwner, Error);
+    return SHELL_ErrorBoxHelper(const_cast<HWND>(hwndOwner), Error);
 }
 #endif
 
