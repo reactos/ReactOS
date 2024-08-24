@@ -25,38 +25,49 @@ NTSTATUS TdiAssociateAddressFile(HANDLE AddressHandle, PFILE_OBJECT ConnectionOb
 
 NTSTATUS TdiDisassociateAddressFile(PFILE_OBJECT ConnectionObject);
 
-NTSTATUS TdiListen
-    (PIRP * Irp,
-     PFILE_OBJECT ConnectionObject,
-     PTDI_CONNECTION_INFORMATION * RequestConnectionInfo,
-     PTDI_CONNECTION_INFORMATION * ReturnConnectionInfo,
-     PIO_COMPLETION_ROUTINE CompletionRoutine, PVOID CompletionContext);
+NTSTATUS TdiListen(
+    PIRP * Irp,
+    PFILE_OBJECT ConnectionObject,
+    PTDI_CONNECTION_INFORMATION * RequestConnectionInfo,
+    PTDI_CONNECTION_INFORMATION * ReturnConnectionInfo,
+    PIO_COMPLETION_ROUTINE CompletionRoutine,
+    PVOID CompletionContext);
 
-NTSTATUS TdiReceive
-    (PIRP * Irp,
-     PFILE_OBJECT ConnectionObject,
-     USHORT Flags,
-     PCHAR Buffer, UINT BufferLength, PIO_COMPLETION_ROUTINE CompletionRoutine, PVOID CompletionContext);
+NTSTATUS TdiReceive(
+    PIRP * Irp,
+    PFILE_OBJECT ConnectionObject,
+    USHORT Flags,
+    PCHAR Buffer,
+    UINT BufferLength,
+    PIO_COMPLETION_ROUTINE CompletionRoutine,
+    PVOID CompletionContext);
 
-NTSTATUS TdiSend
-    (PIRP * Irp,
-     PFILE_OBJECT ConnectionObject,
-     USHORT Flags,
-     PCHAR Buffer, UINT BufferLength, PIO_COMPLETION_ROUTINE CompletionRoutine, PVOID CompletionContext);
+NTSTATUS TdiSend(
+    PIRP * Irp,
+    PFILE_OBJECT ConnectionObject,
+    USHORT Flags,
+    PCHAR Buffer,
+    UINT BufferLength,
+    PIO_COMPLETION_ROUTINE CompletionRoutine,
+    PVOID CompletionContext);
 
-NTSTATUS TdiReceiveDatagram(PIRP * Irp,
-                            PFILE_OBJECT TransportObject,
-                            USHORT Flags,
-                            PCHAR Buffer,
-                            UINT BufferLength,
-                            PTDI_CONNECTION_INFORMATION From,
-                            PIO_COMPLETION_ROUTINE CompletionRoutine, PVOID CompletionContext);
+NTSTATUS TdiReceiveDatagram(
+    PIRP * Irp,
+    PFILE_OBJECT TransportObject,
+    USHORT Flags,
+    PCHAR Buffer,
+    UINT BufferLength,
+    PTDI_CONNECTION_INFORMATION From,
+    PIO_COMPLETION_ROUTINE CompletionRoutine,
+    PVOID CompletionContext);
 
-NTSTATUS TdiSendDatagram(PIRP * Irp,
-                         PFILE_OBJECT TransportObject,
-                         PCHAR Buffer,
-                         UINT BufferLength,
-                         PTDI_CONNECTION_INFORMATION To,
-                         PIO_COMPLETION_ROUTINE CompletionRoutine, PVOID CompletionContext);
+NTSTATUS TdiSendDatagram(
+    PIRP * Irp,
+    PFILE_OBJECT TransportObject,
+    PCHAR Buffer,
+    UINT BufferLength,
+    PTDI_CONNECTION_INFORMATION To,
+    PIO_COMPLETION_ROUTINE CompletionRoutine,
+    PVOID CompletionContext);
 
 NTSTATUS TdiQueryMaxDatagramLength(PFILE_OBJECT FileObject, PUINT MaxDatagramLength);

@@ -1,8 +1,7 @@
 /*
  * PROJECT:     NetIO driver
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     A more convenient networking (TCP/IP, UDP/IP) kernel API
- *              introduced with NT6
+ * PURPOSE:     A more convenient networking (TCP/IP, UDP/IP) kernel API (NT6+)
  * COPYRIGHT:   Copyright 2023-2024 Johannes Thoma <johannes@johannesthoma.com>
  */
 
@@ -13,18 +12,18 @@
 #define WINVER 0x600
 
 /* TODOs:
-	Done: Clean up socket in WskCloseSocket (have RefCount and
-	SocketGet / SocketPut functions).
-	Done: Remove unnecessary code (like Hook of completion)
-	Make it compile with MS VC as well
-	Rebase onto latest master
-	Squash commits (git rebase -i) one for tdihelpers one for netio
+    Done: Clean up socket in WskCloseSocket (have RefCount and
+    SocketGet / SocketPut functions).
+    Done: Remove unnecessary code (like Hook of completion)
+    Make it compile with MS VC as well
+    Rebase onto latest master
+    Squash commits (git rebase -i) one for tdihelpers one for netio
 
-	The whole Listen / Accept mechanism is still missing
-	Some minor functions (not used by WinDRBD) are missing
-	(like WskControlClient, WskSocketConnect, ...)
-	Raw sockets are not supported for now.
-	We should have regression tests for that...
+    The whole Listen / Accept mechanism is still missing
+    Some minor functions (not used by WinDRBD) are missing
+    (like WskControlClient, WskSocketConnect, ...)
+    Raw sockets are not supported for now.
+    We should have regression tests for that...
 */
 
 #include <ntdef.h>
@@ -55,10 +54,10 @@ DWORD DebugTraceLevel = MIN_TRACE;
 #endif
 
 /* AFD Share Flags */
-#define AFD_SHARE_UNIQUE		0x0L
-#define AFD_SHARE_REUSE			0x1L
-#define AFD_SHARE_WILDCARD		0x2L
-#define AFD_SHARE_EXCLUSIVE		0x3L
+#define AFD_SHARE_UNIQUE    0x0L
+#define AFD_SHARE_REUSE     0x1L
+#define AFD_SHARE_WILDCARD  0x2L
+#define AFD_SHARE_EXCLUSIVE 0x3L
 
 struct _WSK_SOCKET_INTERNAL
 {
@@ -128,13 +127,13 @@ SocketPut(struct _WSK_SOCKET_INTERNAL *s)
     }
 }
 
-        /* This just sets the status to pending. It is been called
-         * by the IoCallDriver() function via the MajorFunction
-         * dispatch table in the DriverObject. We need this because
-         * we want to use IoCallDriver to consume one stack location
-         * of the irp. If we do not do so the completion routine of
-         * the upper driver never gets called.
-         */
+/* This just sets the status to pending. It is been called
+ * by the IoCallDriver() function via the MajorFunction
+ * dispatch table in the DriverObject. We need this because
+ * we want to use IoCallDriver to consume one stack location
+ * of the irp. If we do not do so the completion routine of
+ * the upper driver never gets called.
+ */
 
 static NTSTATUS NTAPI
 DummyHandler(PDEVICE_OBJECT Device, PIRP Irp)
@@ -174,7 +173,6 @@ DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     status = IoCreateDevice(DriverObject, sizeof(struct DummyDeviceExtension),
                             &nameUnicode, FILE_DEVICE_UNKNOWN,
                             FILE_DEVICE_SECURE_OPEN, FALSE, &DummyDeviceObject);
-
     if (!NT_SUCCESS(status))
     {
         DbgPrint("Can't create root, err=%x\n", status);
@@ -202,15 +200,17 @@ NetioComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 }
 
 static NTSTATUS WSKAPI
-WskControlSocket(_In_ PWSK_SOCKET Socket,
-                 _In_ WSK_CONTROL_SOCKET_TYPE RequestType,
-                 _In_ ULONG ControlCode,
-                 _In_ ULONG Level,
-                 _In_ SIZE_T InputSize,
-                 _In_reads_bytes_opt_(InputSize) PVOID InputBuffer,
-                 _In_ SIZE_T OutputSize,
-                 _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer,
-                 _Out_opt_ SIZE_T * OutputSizeReturned, _Inout_opt_ PIRP Irp)
+WskControlSocket(
+    _In_ PWSK_SOCKET Socket,
+    _In_ WSK_CONTROL_SOCKET_TYPE RequestType,
+    _In_ ULONG ControlCode,
+    _In_ ULONG Level,
+    _In_ SIZE_T InputSize,
+    _In_reads_bytes_opt_(InputSize) PVOID InputBuffer,
+    _In_ SIZE_T OutputSize,
+    _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer,
+    _Out_opt_ SIZE_T * OutputSizeReturned,
+    _Inout_opt_ PIRP Irp)
 {
     struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
     NTSTATUS status = STATUS_NOT_IMPLEMENTED;
@@ -251,7 +251,6 @@ WskControlSocket(_In_ PWSK_SOCKET Socket,
                                 s->Flags &= ~ControlCode;
                             }
                             status = STATUS_SUCCESS;
-
                             break;
                             /* Windows specific. This sets the mask for callback functions: */
                         case SO_WSK_EVENT_CALLBACK:
@@ -292,7 +291,6 @@ WskControlSocket(_In_ PWSK_SOCKET Socket,
     if (Irp != NULL)
     {
         Irp->IoStatus.Status = status;
-/* ??		Irp->IoStatus.Information = Irp->IoStatus.Information; */
     }
     return status;
 }
@@ -373,7 +371,6 @@ WskBind(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR LocalAddress, _Reserved_ ULONG F
 
     status = TdiOpenAddressFile(&s->TdiName,
                                 ta, AFD_SHARE_REUSE, &s->LocalAddressHandle, &s->LocalAddressFile);
-
     if (NT_SUCCESS(status))
     {
         memcpy(&s->LocalAddress, LocalAddress, sizeof(s->LocalAddress));
@@ -391,12 +388,14 @@ enum direction
 };
 
 static NTSTATUS WSKAPI
-WskSendTo(_In_ PWSK_SOCKET Socket,
-          _In_ PWSK_BUF Buffer,
-          _Reserved_ ULONG Flags,
-          _In_opt_ PSOCKADDR RemoteAddress,
-          _In_ ULONG ControlInfoLength,
-          _In_reads_bytes_opt_(ControlInfoLength) PCMSGHDR ControlInfo, _Inout_ PIRP Irp)
+WskSendTo(
+    _In_ PWSK_SOCKET Socket,
+    _In_ PWSK_BUF Buffer,
+    _Reserved_ ULONG Flags,
+    _In_opt_ PSOCKADDR RemoteAddress,
+    _In_ ULONG ControlInfoLength,
+    _In_reads_bytes_opt_(ControlInfoLength) PCMSGHDR ControlInfo,
+    _Inout_ PIRP Irp)
 {
     PIRP tdiIrp = NULL;
     struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
@@ -457,9 +456,8 @@ WskSendTo(_In_ PWSK_SOCKET Socket,
     InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
 
     /* This will create a tdiIrp: */
-    status =
-        TdiSendDatagram(&tdiIrp, s->LocalAddressFile, ((char *)BufferData) + Buffer->Offset, Buffer->Length,
-                        TargetConnectionInfo, NetioComplete, nc);
+    status = TdiSendDatagram(&tdiIrp, s->LocalAddressFile, ((char *)BufferData) + Buffer->Offset,
+                        Buffer->Length, TargetConnectionInfo, NetioComplete, nc);
 
     /* TODO: check this again..I would assume if the TDI helper function
        returns any error, the completion function is not called.
@@ -473,72 +471,77 @@ WskSendTo(_In_ PWSK_SOCKET Socket,
 }
 
 static NTSTATUS WSKAPI
-WskReceiveFrom(_In_ PWSK_SOCKET Socket,
-               _In_ PWSK_BUF Buffer,
-               _Reserved_ ULONG Flags,
-               _Out_opt_ PSOCKADDR RemoteAddress,
-               _Inout_ PULONG ControlLength,
-               _Out_writes_bytes_opt_(*ControlLength) PCMSGHDR ControlInfo,
-               _Out_opt_ PULONG ControlFlags, _Inout_ PIRP Irp)
+WskReceiveFrom(
+    _In_ PWSK_SOCKET Socket,
+    _In_ PWSK_BUF Buffer,
+    _Reserved_ ULONG Flags,
+    _Out_opt_ PSOCKADDR RemoteAddress,
+    _Inout_ PULONG ControlLength,
+    _Out_writes_bytes_opt_(*ControlLength) PCMSGHDR ControlInfo,
+    _Out_opt_ PULONG ControlFlags, _Inout_ PIRP Irp)
 {
-    DbgPrint("WskReceiveFrom: Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS WSKAPI
 WskReleaseUdp(_In_ PWSK_SOCKET Socket, _In_ PWSK_DATAGRAM_INDICATION DatagramIndication)
 {
-    DbgPrint("WskReleaseUdp: Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS WSKAPI
 WskReleaseTcp(_In_ PWSK_SOCKET Socket, _In_ PWSK_DATA_INDICATION DataIndication)
 {
-    DbgPrint("WskReleaseTcp: Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS WSKAPI
 WskGetLocalAddress(_In_ PWSK_SOCKET Socket, _Out_ PSOCKADDR LocalAddress, _Inout_ PIRP Irp)
 {
-    DbgPrint("WskGetLocalAddress: Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS WSKAPI
 WskGetRemoteAddress(_In_ PWSK_SOCKET Socket, _Out_ PSOCKADDR RemoteAddress, _Inout_ PIRP Irp)
 {
-    DbgPrint("WskGetRemoteAddress: Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS WSKAPI
-WskSocketConnect(PWSK_CLIENT Client,
-                 USHORT SocketType,
-                 ULONG Protocol,
-                 PSOCKADDR LocalAddress,
-                 PSOCKADDR RemoteAddress,
-                 ULONG Flags,
-                 PVOID SocketContext,
-                 const WSK_CLIENT_CONNECTION_DISPATCH * Dispatch,
-                 PEPROCESS OwningProcess,
-                 PETHREAD OwningThread, PSECURITY_DESCRIPTOR SecurityDescriptor, PIRP Irp)
+WskSocketConnect(
+    PWSK_CLIENT Client,
+    USHORT SocketType,
+    ULONG Protocol,
+    PSOCKADDR LocalAddress,
+    PSOCKADDR RemoteAddress,
+    ULONG Flags,
+    PVOID SocketContext,
+    const WSK_CLIENT_CONNECTION_DISPATCH * Dispatch,
+    PEPROCESS OwningProcess,
+    PETHREAD OwningThread,
+    PSECURITY_DESCRIPTOR SecurityDescriptor,
+    PIRP Irp)
 {
-    DbgPrint("WskSocketConnect Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS WSKAPI
-WskControlClient(_In_ PWSK_CLIENT Client,
-                 _In_ ULONG ControlCode,
-                 _In_ SIZE_T InputSize,
-                 _In_reads_bytes_opt_(InputSize) PVOID InputBuffer,
-                 _In_ SIZE_T OutputSize,
-                 _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer,
-                 _Out_opt_ SIZE_T * OutputSizeReturned, _Inout_opt_ PIRP Irp)
+WskControlClient(
+    _In_ PWSK_CLIENT Client,
+    _In_ ULONG ControlCode,
+    _In_ SIZE_T InputSize,
+    _In_reads_bytes_opt_(InputSize) PVOID InputBuffer,
+    _In_ SIZE_T OutputSize,
+    _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer,
+    _Out_opt_ SIZE_T * OutputSizeReturned, _Inout_opt_ PIRP Irp)
 {
-    DbgPrint("WskControlClient Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -588,8 +591,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
 
     if (s->LocalAddressHandle == INVALID_HANDLE_VALUE)
     {
-        DbgPrint
-            ("LocalAddressHandle is not set, maybe you need to bind() your socket before connecting it?\n");
+        DbgPrint("LocalAddressHandle is not set, need to bind your socket before connecting\n");
         Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
         return STATUS_INVALID_PARAMETER;
     }
@@ -631,7 +633,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
 
     status = TdiConnect(&tdiIrp, s->ConnectionFile, TargetConnectionInfo, Ignored, NetioComplete, nc);
-    /* TODO: check this again..I would assume if the TDI helper function
+    /* TODO: check this again. I would assume if the TDI helper function
        returns any error, the completion function is not called.
      */
     if (!NT_SUCCESS(status))
@@ -643,8 +645,12 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
 }
 
 static NTSTATUS WSKAPI
-WskStreamIo(_In_ PWSK_SOCKET Socket,
-            _In_ PWSK_BUF Buffer, _In_ ULONG Flags, _Inout_ PIRP Irp, enum direction Direction)
+WskStreamIo(
+    _In_ PWSK_SOCKET Socket,
+    _In_ PWSK_BUF Buffer,
+    _In_ ULONG Flags,
+     _Inout_ PIRP Irp,
+    enum direction Direction)
 {
     PIRP tdiIrp = NULL;
     struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
@@ -690,18 +696,16 @@ WskStreamIo(_In_ PWSK_SOCKET Socket,
     if (Direction == DIR_SEND)
     {
         /* This will create a tdiIrp: */
-        status =
-            TdiSend(&tdiIrp, s->ConnectionFile, 0, ((char *)BufferData) + Buffer->Offset, Buffer->Length,
-                    NetioComplete, nc);
+        status = TdiSend(&tdiIrp, s->ConnectionFile, 0, ((char *)BufferData) + Buffer->Offset,
+                    Buffer->Length, NetioComplete, nc);
     }
     else
     {
-        status =
-            TdiReceive(&tdiIrp, s->ConnectionFile, 0, ((char *)BufferData) + Buffer->Offset, Buffer->Length,
-                       NetioComplete, nc);
+        status = TdiReceive(&tdiIrp, s->ConnectionFile, 0, ((char *)BufferData) + Buffer->Offset,
+                       Buffer->Length, NetioComplete, nc);
     }
 
-    /* TODO: check this again..I would assume if the TDI helper function
+    /* TODO: check this again. I would assume if the TDI helper function
        returns any error, the completion function is not called.
      */
     if (!NT_SUCCESS(status))
@@ -728,7 +732,7 @@ WskReceive(_In_ PWSK_SOCKET Socket, _In_ PWSK_BUF Buffer, _In_ ULONG Flags, _Ino
 static NTSTATUS WSKAPI
 WskDisconnect(_In_ PWSK_SOCKET Socket, _In_opt_ PWSK_BUF Buffer, _In_ ULONG Flags, _Inout_ PIRP Irp)
 {
-    DbgPrint("WskDisconnect Not implemented\n");
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -747,14 +751,18 @@ static struct _WSK_PROVIDER_CONNECTION_DISPATCH TcpDispatch = {
 };
 
 static NTSTATUS WSKAPI
-WskSocket(PWSK_CLIENT Client,
-          ADDRESS_FAMILY AddressFamily,
-          USHORT SocketType,
-          ULONG Protocol,
-          ULONG Flags,
-          PVOID SocketContext,
-          const VOID * Dispatch,
-          PEPROCESS OwningProcess, PETHREAD OwningThread, PSECURITY_DESCRIPTOR SecurityDescriptor, PIRP Irp)
+WskSocket(
+    PWSK_CLIENT Client,
+    ADDRESS_FAMILY AddressFamily,
+    USHORT SocketType,
+    ULONG Protocol,
+    ULONG Flags,
+    PVOID SocketContext,
+    const VOID * Dispatch,
+    PEPROCESS OwningProcess,
+    PETHREAD OwningThread,
+    PSECURITY_DESCRIPTOR SecurityDescriptor,
+    PIRP Irp)
 {
     struct _WSK_SOCKET_INTERNAL *s;
     NTSTATUS status;
