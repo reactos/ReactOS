@@ -18,8 +18,10 @@ NTSTATUS TdiBuildNullConnectionInfo(PTDI_CONNECTION_INFORMATION * ConnectionInfo
 /* tdi.c */
 
 NTSTATUS TdiOpenAddressFile(PUNICODE_STRING DeviceName,
-                            PTRANSPORT_ADDRESS Name,
-                            ULONG ShareType, PHANDLE AddressHandle, PFILE_OBJECT * AddressObject);
+    PTRANSPORT_ADDRESS Name,
+    ULONG ShareType,
+    PHANDLE AddressHandle,
+    PFILE_OBJECT * AddressObject);
 
 NTSTATUS TdiAssociateAddressFile(HANDLE AddressHandle, PFILE_OBJECT ConnectionObject);
 

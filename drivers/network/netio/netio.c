@@ -122,7 +122,7 @@ SocketPut(struct _WSK_SOCKET_INTERNAL *s)
             s->ConnectionHandle = INVALID_HANDLE_VALUE;
             s->ConnectionFile = NULL;
         }
-        /* TODO: Free TdiName and others ... */
+        /* TODO: Free TdiName and others */
         ExFreePoolWithTag(s, 'SOCK');
     }
 }
@@ -228,7 +228,7 @@ WskControlSocket(
                 case SOL_SOCKET:
                     switch (ControlCode)
                     {
-                        case SO_REUSEADDR:     /* add more supported flags here ... */
+                        case SO_REUSEADDR:     /* add more supported flags here */
                             if (InputBuffer == NULL)
                             {
                                 DbgPrint("WskControlSocket: Need an InputBuffer for this operation\n");
@@ -450,7 +450,7 @@ WskSendTo(
     }
     IoMarkIrpPending(Irp);
     SocketGet(s);
-    /* TODO: protect by spinlock ... */
+    /* TODO: protect by spinlock */
     /* TODO: still needed? */
     InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
 
@@ -458,7 +458,7 @@ WskSendTo(
     status = TdiSendDatagram(&tdiIrp, s->LocalAddressFile, ((char *)BufferData) + Buffer->Offset,
                         Buffer->Length, TargetConnectionInfo, NetioComplete, nc);
 
-    /* TODO: check this again..I would assume if the TDI helper function
+    /* TODO: check this again. I would assume if the TDI helper function
        returns any error, the completion function is not called.
      */
     if (!NT_SUCCESS(status))
@@ -688,7 +688,7 @@ WskStreamIo(
         Irp->Tail.Overlay.Thread = PsGetCurrentThread();
     }
     IoMarkIrpPending(Irp);
-    /* TODO: protect by spinlock ... */
+    /* TODO: protect by spinlock */
     InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
     SocketGet(s);
 
@@ -851,7 +851,7 @@ WskSocket(
 
         default:
             DbgPrint("Socket type not yet supported\n");
-            /* A little bit later this probably crashes ... */
+            /* A little bit later this probably crashes */
     }
 
     Irp->IoStatus.Information = (ULONG_PTR) s;

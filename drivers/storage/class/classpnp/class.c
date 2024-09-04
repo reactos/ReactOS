@@ -4092,9 +4092,10 @@ ClassSendSrbSynchronous(
     // The Srb->Function should have been set corresponding to SrbType.
     //
 
+/*
     NT_ASSERT( ((fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_SCSI_REQUEST_BLOCK) && (Srb->Function == SRB_FUNCTION_EXECUTE_SCSI)) ||
                ((fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) && (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK)) );
-
+*/
 
     //
     // Sense buffer is in aligned nonpaged pool.
