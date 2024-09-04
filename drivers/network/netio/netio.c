@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2023-2024 Johannes Thoma <johannes@johannesthoma.com>
  */
 
-/* We are a NT6+ driver .. */
+/* We are a NT6+ driver */
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x600
 #undef WINVER
@@ -349,7 +349,6 @@ TdiConnectionInfoFromSocketAddress(PSOCKADDR SocketAddress)
     }
     return ConnectionInformation;
 }
-
 
 static NTSTATUS WSKAPI
 WskBind(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR LocalAddress, _Reserved_ ULONG Flags, _Inout_ PIRP Irp)
