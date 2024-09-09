@@ -1371,7 +1371,12 @@ HRESULT WINAPI DrawThemeIcon(HTHEME hTheme, HDC hdc, int iPartId, int iStateId,
 typedef int (WINAPI * DRAWSHADOWTEXT)(HDC hdc, LPCWSTR pszText, UINT cch, RECT *prc, DWORD dwFlags,
                           COLORREF crText, COLORREF crShadow, int ixOffset, int iyOffset);
 
-static HRESULT UXTHEME_DrawThemeTextEx(
+/***********************************************************************
+ *      DrawThemeTextEx                                     (UXTHEME.@)
+ */
+HRESULT
+WINAPI
+DrawThemeTextEx(
     _In_ HTHEME hTheme,
     _In_ HDC hdc,
     _In_ int iPartId,
@@ -1400,7 +1405,7 @@ static HRESULT UXTHEME_DrawThemeTextEx(
         return E_HANDLE;
     if (!options)
         return E_NOTIMPL;
-    
+
     optFlags = options->dwFlags;
 
     hr = GetThemeFont(hTheme, hdc, iPartId, iStateId, TMT_FONT, &logfont);
@@ -1428,7 +1433,7 @@ static HRESULT UXTHEME_DrawThemeTextEx(
         int textColorProp = TMT_TEXTCOLOR;
         if (optFlags & DTT_COLORPROP)
             textColorProp = options->iColorPropId;
-        
+
         if (FAILED(GetThemeColor(hTheme, iPartId, iStateId, textColorProp, &textColor)))
             textColor = GetTextColor(hdc);
     }
@@ -1510,29 +1515,30 @@ HRESULT WINAPI DrawThemeText(HTHEME hTheme, HDC hdc, int iPartId, int iStateId,
     }
     opts.dwSize = sizeof(opts);
 
-    return UXTHEME_DrawThemeTextEx(hTheme, hdc, iPartId, iStateId, pszText, iCharCount, dwTextFlags, &rt, &opts);
+    return DrawThemeTextEx(hTheme, hdc, iPartId, iStateId, pszText, iCharCount, dwTextFlags, &rt, &opts);
 }
 
 /***********************************************************************
- *      DrawThemeTextEx                                     (UXTHEME.@)
+ *      DrawThemeText                                       (UXTHEME.@)
  */
-HRESULT
-WINAPI
-DrawThemeTextEx(
-    _In_ HTHEME hTheme,
-    _In_ HDC hdc,
-    _In_ int iPartId,
-    _In_ int iStateId,
-    _In_ LPCWSTR pszText,
-    _In_ int iCharCount,
-    _In_ DWORD dwTextFlags,
-    _Inout_ LPRECT pRect,
-    _In_ const DTTOPTS *options
-)
+HRESULT WINAPI DrawThemeText(HTHEME hTheme, HDC hdc, int iPartId, int iStateId,
+                             LPCWSTR pszText, int iCharCount, DWORD dwTextFlags,
+                             DWORD dwTextFlags2, const RECT *pRect)
 {
-    TRACE("(%p %p %d %d %s:%d 0x%08lx %p %p)\n", hTheme, hdc, iPartId, iStateId,
-        debugstr_wn(pszText, iCharCount), iCharCount, dwTextFlags, pRect, options);
-    return UXTHEME_DrawThemeTextEx(hTheme, hdc, iPartId, iStateId, pszText, iCharCount, dwTextFlags, pRect, options);
+    DTTOPTS opts = { 0 };
+    RECT rt = *pRect;
+
+    TRACE("(%p %p %d %d %s:%d 0x%08lx 0x%08lx %p)\n", hTheme, hdc, iPartId, iStateId,
+        debugstr_wn(pszText, iCharCount), iCharCount, dwTextFlags, dwTextFlags2, pRect);
+
+    if (dwTextFlags2 & DTT_GRAYED)
+    {
+        opts.dwFlags = DTT_TEXTCOLOR;
+        opts.crText = GetSysColor(COLOR_GRAYTEXT);
+    }
+    opts.dwSize = sizeof(opts);
+
+    return DrawThemeTextEx(hTheme, hdc, iPartId, iStateId, pszText, iCharCount, dwTextFlags, &rt, &opts);
 }
 
 /***********************************************************************

@@ -45,7 +45,6 @@
 #include <reactos/version.h>
 #include <reactos/buildno.h>
 
-#include <versionhelpers.h>
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
 const char * const SHELL_Authors[] = { "Copyright 1993-"COPYRIGHT_YEAR" WINE team", "Copyright 1998-"COPYRIGHT_YEAR" ReactOS Team", 0 };
@@ -382,19 +381,19 @@ static DWORD shgfi_get_exe_type(LPCWSTR szFullPath)
  */
 BOOL SHELL_IsShortcut(LPCITEMIDLIST pidlLast)
 {
-    char szTemp[MAX_PATH];
+    WCHAR szTemp[MAX_PATH];
     HKEY keyCls;
     BOOL ret = FALSE;
 
-    if (_ILGetExtension(pidlLast, szTemp, MAX_PATH) &&
-          HCR_MapTypeToValueA(szTemp, szTemp, MAX_PATH, TRUE))
+    if (_ILGetExtension(pidlLast, szTemp, _countof(szTemp)) &&
+        HCR_MapTypeToValueW(szTemp, szTemp, _countof(szTemp), TRUE))
     {
-        if (ERROR_SUCCESS == RegOpenKeyExA(HKEY_CLASSES_ROOT, szTemp, 0, KEY_QUERY_VALUE, &keyCls))
+        if (ERROR_SUCCESS == RegOpenKeyExW(HKEY_CLASSES_ROOT, szTemp, 0, KEY_QUERY_VALUE, &keyCls))
         {
-          if (ERROR_SUCCESS == RegQueryValueExA(keyCls, "IsShortcut", NULL, NULL, NULL, NULL))
-            ret = TRUE;
+            if (ERROR_SUCCESS == RegQueryValueExW(keyCls, L"IsShortcut", NULL, NULL, NULL, NULL))
+                ret = TRUE;
 
-          RegCloseKey(keyCls);
+            RegCloseKey(keyCls);
         }
     }
 
@@ -560,10 +559,7 @@ DWORD_PTR WINAPI SHGetFileInfoW(LPCWSTR path,DWORD dwFileAttributes,
     {
         if (!(flags & SHGFI_USEFILEATTRIBUTES) || (flags & SHGFI_PIDL))
         {
-            char ftype[80];
-
-            _ILGetFileType(pidlLast, ftype, 80);
-            MultiByteToWideChar(CP_ACP, 0, ftype, -1, psfi->szTypeName, 80 );
+            _ILGetFileType(pidlLast, psfi->szTypeName, _countof(psfi->szTypeName));
         }
         else
         {
@@ -1088,16 +1084,7 @@ static INT_PTR CALLBACK AboutDlgProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM
                 WCHAR szAuthorsText[20];
 
                 // Preload the ROS bitmap
-                if (IsWindowsServer())
-                {
-                   // Load Server Bitmap
-                   hLogoBmp = (HBITMAP)LoadImage(shell32_hInstance, MAKEINTRESOURCE(IDB_REACTOS_SERVER), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
-                }
-                else
-                {
-                   // Load Workstation Bitmap
-                   hLogoBmp = (HBITMAP)LoadImage(shell32_hInstance, MAKEINTRESOURCE(IDB_REACTOS_WORKSTATION), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
-                }
+                hLogoBmp = (HBITMAP)LoadImage(shell32_hInstance, MAKEINTRESOURCE(IDB_REACTOS), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
                 hLineBmp = (HBITMAP)LoadImage(shell32_hInstance, MAKEINTRESOURCE(IDB_LINEBAR), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
 
                 if (hLogoBmp && hLineBmp)

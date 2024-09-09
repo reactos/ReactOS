@@ -128,6 +128,15 @@ SHParseDarwinIDFromCacheW(LPCWSTR lpUnknown1, LPWSTR lpUnknown2)
     return E_FAIL;
 }
 
+static HRESULT DataObject_GetHIDACount(IDataObject *pdo)
+{
+    if (!pdo)
+        return E_INVALIDARG;
+    CDataObjectHIDA cida(pdo);
+    HRESULT hr = cida.hr();
+    return SUCCEEDED(hr) ? cida->cidl : hr;
+}
+
 /*
  * Unimplemented
  */
@@ -136,6 +145,19 @@ WINAPI
 SHMultiFileProperties(IDataObject *pDataObject, DWORD dwFlags)
 {
     FIXME("SHMultiFileProperties() stub\n");
+
+    // Temporary workaround to display a property sheet if possible
+    if (DataObject_GetHIDACount(pDataObject) == 1)
+        return SHELL32_ShowPropertiesDialog(pDataObject);
+
+    if (pDataObject)
+    {
+        HWND hWnd;
+        if (FAILED(IUnknown_GetWindow(pDataObject, &hWnd))) // Will probably not work but we have no other option
+            hWnd = NULL;
+        SHELL_ErrorBox(hWnd, HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
+    }  
+
     return E_FAIL;
 }
 
@@ -490,106 +512,6 @@ SHCreateProcessAsUserW(PSHCREATEPROCESSINFOW pscpi)
 {
     FIXME("SHCreateProcessAsUserW() stub\n");
     return FALSE;
-}
-
-/*
- * Unimplemented
- */
-EXTERN_C HINSTANCE
-WINAPI
-RealShellExecuteExA(HWND hwnd,
-                    LPCSTR lpOperation,
-                    LPCSTR lpFile,
-                    LPCSTR lpParameters,
-                    LPCSTR lpDirectory,
-                    LPSTR lpReturn,
-                    LPCSTR lpTitle,
-                    LPSTR lpReserved,
-                    WORD nShowCmd,
-                    HANDLE *lpProcess,
-                    DWORD dwFlags)
-{
-    FIXME("RealShellExecuteExA() stub\n");
-    return NULL;
-}
-
-/*
- * Unimplemented
- */
-EXTERN_C HINSTANCE
-WINAPI
-RealShellExecuteExW(HWND hwnd,
-                    LPCWSTR lpOperation,
-                    LPCWSTR lpFile,
-                    LPCWSTR lpParameters,
-                    LPCWSTR lpDirectory,
-                    LPWSTR lpReturn,
-                    LPCWSTR lpTitle,
-                    LPWSTR lpReserved,
-                    WORD nShowCmd,
-                    HANDLE *lpProcess,
-                    DWORD dwFlags)
-{
-    FIXME("RealShellExecuteExW() stub\n");
-    return NULL;
-}
-
-/*
- * Implemented
- */
-EXTERN_C HINSTANCE
-WINAPI
-RealShellExecuteA(HWND hwnd,
-                  LPCSTR lpOperation,
-                  LPCSTR lpFile,
-                  LPCSTR lpParameters,
-                  LPCSTR lpDirectory,
-                  LPSTR lpReturn,
-                  LPCSTR lpTitle,
-                  LPSTR lpReserved,
-                  WORD nShowCmd,
-                  HANDLE *lpProcess)
-{
-    return RealShellExecuteExA(hwnd,
-                               lpOperation,
-                               lpFile,
-                               lpParameters,
-                               lpDirectory,
-                               lpReturn,
-                               lpTitle,
-                               lpReserved,
-                               nShowCmd,
-                               lpProcess,
-                               0);
-}
-
-/*
- * Implemented
- */
-EXTERN_C HINSTANCE
-WINAPI
-RealShellExecuteW(HWND hwnd,
-                  LPCWSTR lpOperation,
-                  LPCWSTR lpFile,
-                  LPCWSTR lpParameters,
-                  LPCWSTR lpDirectory,
-                  LPWSTR lpReturn,
-                  LPCWSTR lpTitle,
-                  LPWSTR lpReserved,
-                  WORD nShowCmd,
-                  HANDLE *lpProcess)
-{
-    return RealShellExecuteExW(hwnd,
-                               lpOperation,
-                               lpFile,
-                               lpParameters,
-                               lpDirectory,
-                               lpReturn,
-                               lpTitle,
-                               lpReserved,
-                               nShowCmd,
-                               lpProcess,
-                               0);
 }
 
 /*

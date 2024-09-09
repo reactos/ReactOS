@@ -15,7 +15,8 @@ extern "C" {
 #define DTBG_COMPUTINGREGION        0x00000010
 #define DTBG_MIRRORDC               0x00000020
 #define DTT_GRAYED                  0x00000001
-//Vista+
+
+/* DTTOPTS.dwFlags bits */
 #define DTT_TEXTCOLOR               0x00000001
 #define DTT_BORDERCOLOR             0x00000002
 #define DTT_SHADOWCOLOR             0x00000004
@@ -31,7 +32,6 @@ extern "C" {
 #define DTT_CALLBACK                0x00001000
 #define DTT_COMPOSITED              0x00002000
 #define DTT_VALIDBITS               0x00003fff
-
 
 #define ETDT_DISABLE                0x00000001
 #define ETDT_ENABLE                 0x00000002
@@ -57,8 +57,9 @@ extern "C" {
 
 typedef HANDLE HPAINTBUFFER;
 typedef HANDLE HTHEME;
-//Vista+
+/* Vista+ */
 typedef HANDLE HANIMATIONBUFFER;
+
 typedef int (WINAPI *DTT_CALLBACK_PROC)(HDC,LPWSTR,int,RECT*,UINT,LPARAM);
 
 typedef enum _BP_BUFFERFORMAT
@@ -68,7 +69,6 @@ typedef enum _BP_BUFFERFORMAT
 	BPBF_TOPDOWNDIB,
 	BPBF_TOPDOWNMONODIB
 } BP_BUFFERFORMAT;
-
 
 typedef struct _BP_PAINTPARAMS
 {
@@ -92,7 +92,7 @@ typedef enum THEMESIZE {
     TS_DRAW
 } THEMESIZE;
 
-//Vista+
+/* Vista+ */
 typedef enum _BP_ANIMATIONSTYLE
 {
     BPAS_NONE,
@@ -100,11 +100,12 @@ typedef enum _BP_ANIMATIONSTYLE
     BPAS_CUBIC,
     BPAS_SINE
 } BP_ANIMATIONSTYLE;
+  
+/* Vista+ */
 enum WINDOWTHEMEATTRIBUTETYPE
 {
     WTA_NONCLIENT = 1
 };
-
 
 typedef struct _DTBGOPTS {
     DWORD dwSize;
@@ -126,7 +127,6 @@ typedef struct _MARGINS {
     int cyBottomHeight;
 } MARGINS, *PMARGINS;
 
-//Vista+
 typedef struct _DTTOPTS {
     DWORD dwSize;
     DWORD dwFlags;
@@ -144,6 +144,7 @@ typedef struct _DTTOPTS {
     DTT_CALLBACK_PROC pfnDrawTextCallback;
     LPARAM lParam;
 } DTTOPTS, *PDTTOPTS;
+
 typedef struct _BP_ANIMATIONPARAMS
 {
     DWORD cbSize;
@@ -152,7 +153,6 @@ typedef struct _BP_ANIMATIONPARAMS
     DWORD dwDuration;
 } BP_ANIMATIONPARAMS, *PBP_ANIMATIONPARAMS;
 
-
 HRESULT WINAPI CloseThemeData(HTHEME);
 HRESULT WINAPI DrawThemeBackground(HTHEME,HDC,int,int,const RECT*,const RECT*);
 HRESULT WINAPI DrawThemeBackgroundEx(HTHEME,HDC,int,int,const RECT*,const DTBGOPTS*);
@@ -160,23 +160,6 @@ HRESULT WINAPI DrawThemeEdge(HTHEME,HDC,int,int,const RECT*,UINT,UINT,RECT*);
 HRESULT WINAPI DrawThemeIcon(HTHEME,HDC,int,int,const RECT*,HIMAGELIST,int);
 HRESULT WINAPI DrawThemeParentBackground(HWND,HDC,RECT*);
 HRESULT WINAPI DrawThemeText(HTHEME,HDC,int,int,LPCWSTR,int,DWORD,DWORD,const RECT*);
-//Vista+
-HRESULT
-WINAPI
-DrawThemeTextEx(
-    _In_ HTHEME hTheme,
-    _In_ HDC hdc,
-    _In_ int iPartId,
-    _In_ int iStateId,
-    _In_ LPCWSTR pszText,
-    _In_ int iCharCount,
-    _In_ DWORD dwTextFlags,
-    _Inout_ LPRECT pRect,
-    _In_ const DTTOPTS *options
-);
-
-
-
 HRESULT WINAPI EnableThemeDialogTexture(HWND,DWORD);
 HRESULT WINAPI EnableTheming(BOOL);
 HRESULT WINAPI GetCurrentThemeName(LPWSTR,int,LPWSTR,int,LPWSTR,int);
@@ -219,7 +202,24 @@ HTHEME WINAPI OpenThemeData(HWND,LPCWSTR);
 HTHEME WINAPI OpenThemeDataEx(HWND,LPCWSTR,DWORD);
 void WINAPI SetThemeAppProperties(DWORD);
 HRESULT WINAPI SetWindowTheme(HWND,LPCWSTR,LPCWSTR);
-//Vista+
+
+/* Undocumented and not exported in Windows XP/2003
+ * In public headers since Vista+ */
+HRESULT
+WINAPI
+DrawThemeTextEx(
+    _In_ HTHEME hTheme,
+    _In_ HDC hdc,
+    _In_ int iPartId,
+    _In_ int iStateId,
+    _In_ LPCWSTR pszText,
+    _In_ int iCharCount,
+    _In_ DWORD dwTextFlags,
+    _Inout_ LPRECT pRect,
+    _In_ const DTTOPTS *options
+);
+
+/* Vista+ */
 HRESULT WINAPI BufferedPaintInit(VOID);
 HRESULT WINAPI BufferedPaintUnInit(VOID);
 HPAINTBUFFER WINAPI BeginBufferedPaint(HDC, const RECT *, BP_BUFFERFORMAT,
@@ -237,8 +237,6 @@ HANIMATIONBUFFER WINAPI BeginBufferedAnimation(HWND, HDC, const RECT *,
 BOOL WINAPI BufferedPaintRenderAnimation(HWND, HDC);
 HRESULT WINAPI BufferedPaintStopAllAnimations(HWND);
 HRESULT WINAPI EndBufferedAnimation(HANIMATIONBUFFER, BOOL);
-
-
 #endif
 
 #ifdef __cplusplus

@@ -20,6 +20,10 @@
 #ifndef __FREELDR_H
 #define __FREELDR_H
 
+/* Enabled for supporting the deprecated boot options
+ * that will be removed in a future FreeLdr version */
+#define HAS_DEPRECATED_OPTIONS
+
 #define UINT64_C(val) val##ULL
 #define RVA(m, b) ((PVOID)((ULONG_PTR)(b) + (ULONG_PTR)(m)))
 
@@ -59,7 +63,6 @@
 #include <arcsupp.h>
 #include <bytesex.h>
 #include <cache.h>
-#include <cmdline.h>
 #include <comm.h>
 #include <disk.h>
 #include <fs.h>
@@ -74,6 +77,7 @@
 #include <options.h>
 #include <oslist.h>
 #include <ramdisk.h>
+#include <settings.h>
 #include <ver.h>
 
 /* NTOS loader */
@@ -113,11 +117,9 @@
 #include <arch/pc/machpc.h>
 #endif
 #include <arch/i386/i386.h>
-#include <internal/i386/intrin_i.h>
 #elif defined(_M_AMD64)
 #include <arch/pc/machpc.h>
 #include <arch/amd64/amd64.h>
-#include <internal/amd64/intrin_i.h>
 #elif defined(_M_PPC)
 #include <arch/powerpc/hardware.h>
 #elif defined(_M_ARM)
@@ -127,10 +129,24 @@
 #endif
 
 VOID __cdecl BootMain(IN PCCH CmdLine);
-VOID LoadOperatingSystem(IN OperatingSystemItem* OperatingSystem);
-#ifdef HAS_OPTION_MENU_EDIT_CMDLINE
-VOID EditOperatingSystemEntry(IN OperatingSystemItem* OperatingSystem);
+
+#ifdef HAS_DEPRECATED_OPTIONS
+VOID
+WarnDeprecated(
+    _In_ PCSTR MsgFmt,
+    ...);
 #endif
+
+VOID
+LoadOperatingSystem(
+    _In_ OperatingSystemItem* OperatingSystem);
+
+#ifdef HAS_OPTION_MENU_EDIT_CMDLINE
+VOID
+EditOperatingSystemEntry(
+    _Inout_ OperatingSystemItem* OperatingSystem);
+#endif
+
 VOID RunLoader(VOID);
 VOID FrLdrCheckCpuCompatibility(VOID);
 

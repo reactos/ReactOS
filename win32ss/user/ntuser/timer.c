@@ -19,10 +19,12 @@ static LONG TimeLast = 0;
 /* Windows 2000 has room for 32768 window-less timers */
 #define NUM_WINDOW_LESS_TIMERS   32768
 
+#define HINTINDEX_BEGIN_VALUE   0
+
 static PFAST_MUTEX    Mutex;
 static RTL_BITMAP     WindowLessTimersBitMap;
 static PVOID          WindowLessTimersBitMapBuffer;
-static ULONG          HintIndex = 1;
+static ULONG          HintIndex = HINTINDEX_BEGIN_VALUE;
 
 ERESOURCE TimerLock;
 
@@ -181,7 +183,8 @@ IntSetTimer( PWND Window,
                   INT Type)
 {
   PTIMER pTmr;
-  UINT Ret = IDEvent;
+  UINT_PTR Ret = IDEvent;
+  ULONG ulBitmapIndex;
   LARGE_INTEGER DueTime;
   DueTime.QuadPart = (LONGLONG)(-97656); // 1024hz .9765625 ms set to 10.0 ms
 
@@ -219,18 +222,22 @@ IntSetTimer( PWND Window,
   {
       IntLockWindowlessTimerBitmap();
 
-      IDEvent = RtlFindClearBitsAndSet(&WindowLessTimersBitMap, 1, HintIndex);
-
-      if (IDEvent == (UINT_PTR) -1)
+      ulBitmapIndex = RtlFindClearBitsAndSet(&WindowLessTimersBitMap, 1, HintIndex++);
+      if (ulBitmapIndex == ULONG_MAX)
+      {
+         HintIndex = HINTINDEX_BEGIN_VALUE;
+         ulBitmapIndex = RtlFindClearBitsAndSet(&WindowLessTimersBitMap, 1, HintIndex++);
+      }
+      if (ulBitmapIndex == ULONG_MAX)
       {
          IntUnlockWindowlessTimerBitmap();
          ERR("Unable to find a free window-less timer id\n");
          EngSetLastError(ERROR_NO_SYSTEM_RESOURCES);
-         ASSERT(FALSE);
          return 0;
       }
 
-      IDEvent = NUM_WINDOW_LESS_TIMERS - IDEvent;
+      ASSERT(ulBitmapIndex < NUM_WINDOW_LESS_TIMERS);
+      IDEvent = NUM_WINDOW_LESS_TIMERS - ulBitmapIndex;
       Ret = IDEvent;
 
       IntUnlockWindowlessTimerBitmap();
@@ -613,7 +620,7 @@ InitTimerImpl(VOID)
 
    RtlInitializeBitMap(&WindowLessTimersBitMap,
                        WindowLessTimersBitMapBuffer,
-                       BitmapBytes * 8);
+                       NUM_WINDOW_LESS_TIMERS);
 
    /* Yes we need this, since ExAllocatePoolWithTag isn't supposed to zero out allocated memory */
    RtlClearAllBits(&WindowLessTimersBitMap);
