@@ -153,7 +153,9 @@ PDEVICE_OBJECT DummyDeviceObject;
 static NTSTATUS
 DummyCallDriver(PIRP Irp)
 {
-    return IoCallDriver(DummyDeviceObject, Irp);
+    IoSetNextIrpStackLocation(Irp);
+    return STATUS_SUCCESS;
+//    return IoCallDriver(DummyDeviceObject, Irp);
 }
 
 NTSTATUS NTAPI
@@ -403,12 +405,14 @@ WskSendTo(
     void *BufferData;
     struct NetioContext *nc;
 
+#if 0
     if (DummyDeviceObject == NULL)
     {
         DbgPrint("DummyDeviceObject is NULL, was the DriverEntry funtion called?\n");
         Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
         return STATUS_INVALID_PARAMETER;        /* TODO: something more meaningful */
     }
+#endif
 
     /* Call ourselves. Sets status to pending. The interesting
      * part happens later.
@@ -569,12 +573,14 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     /* Call ourselves. Sets status to pending. The interesting
      * part happens later.
      */
+#if 0
     if (DummyDeviceObject == NULL)
     {
         DbgPrint("DummyDeviceObject is NULL, was the DriverEntry funtion called?\n");
         Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
         return STATUS_INVALID_PARAMETER;        /* TODO: something more meaningful */
     }
+#endif
     DummyCallDriver(Irp);
 
     nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
