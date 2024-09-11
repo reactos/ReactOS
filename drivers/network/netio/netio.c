@@ -26,7 +26,6 @@
     We should have regression tests for that...
 */
 
-#include <ntdef.h>
 #include <wdm.h>
 #include <wsk.h>
 #include <ndis.h>
@@ -44,10 +43,6 @@
 
 /* AFD also defines this. It is used by the tdi helpers */
 DWORD DebugTraceLevel = MIN_TRACE;
-
-#ifndef INVALID_HANDLE_VALUE
-#define INVALID_HANDLE_VALUE ((HANDLE) -1)
-#endif
 
 #ifndef TAG_AFD_TDI_CONNECTION_INFORMATION
 #define TAG_AFD_TDI_CONNECTION_INFORMATION 'cTfA'
@@ -85,9 +80,6 @@ struct _WSK_SOCKET_INTERNAL
     int CallbackMask;
 
     int Flags;                  /* SO_REUSEADDR, ... see ws2def.h */
-    /* TODO: we have refcounting now, this should go away: */
-    LIST_ENTRY PendingUserIrps; /* Irps we got from our user.
-                                   For cancelling in WskClose() */
     int RefCount;               /* See SocketGet/SocketPut TODO: this should be atomic */
 };
 
@@ -106,80 +98,30 @@ SocketGet(struct _WSK_SOCKET_INTERNAL *s)
 void
 SocketPut(struct _WSK_SOCKET_INTERNAL *s)
 {
-    /* TODO: get some spinlock */
     s->RefCount--;
     if (s->RefCount == 0)
     {
-        if (s->LocalAddressHandle != INVALID_HANDLE_VALUE)
+        if (s->LocalAddressHandle != NULL)
         {
             ZwClose(s->LocalAddressHandle);
-            s->LocalAddressHandle = INVALID_HANDLE_VALUE;
+            s->LocalAddressHandle = NULL;
             s->LocalAddressFile = NULL;
         }
-        if (s->ConnectionHandle != INVALID_HANDLE_VALUE)
+        if (s->ConnectionHandle != NULL)
         {
             ZwClose(s->ConnectionHandle);
-            s->ConnectionHandle = INVALID_HANDLE_VALUE;
+            s->ConnectionHandle = NULL;
             s->ConnectionFile = NULL;
         }
-        /* TODO: Free TdiName and others */
-        ExFreePoolWithTag(s, 'SOCK');
+        ExFreePool(s);
     }
-}
-
-/* This just sets the status to pending. It is been called
- * by the IoCallDriver() function via the MajorFunction
- * dispatch table in the DriverObject. We need this because
- * we want to use IoCallDriver to consume one stack location
- * of the irp. If we do not do so the completion routine of
- * the upper driver never gets called.
- */
-
-static NTSTATUS NTAPI
-DummyHandler(PDEVICE_OBJECT Device, PIRP Irp)
-{
-    Irp->IoStatus.Status = STATUS_PENDING;
-
-    return STATUS_PENDING;
-}
-
-struct DummyDeviceExtension
-{
-    int x;
-};
-
-PDEVICE_OBJECT DummyDeviceObject;
-
-static NTSTATUS
-DummyCallDriver(PIRP Irp)
-{
-    IoSetNextIrpStackLocation(Irp);
-    return STATUS_SUCCESS;
-//    return IoCallDriver(DummyDeviceObject, Irp);
 }
 
 NTSTATUS NTAPI
 DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
-    int i;
-    NTSTATUS status;
-    UNICODE_STRING nameUnicode;
-
     DbgPrint("netio.sys DriverEntry compiled " __DATE__ " " __TIME__ "\n");
 
-    for(i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-        DriverObject->MajorFunction[i] = DummyHandler;
-
-    RtlInitUnicodeString(&nameUnicode, L"\\Device\\NetioSysDummy");
-
-    status = IoCreateDevice(DriverObject, sizeof(struct DummyDeviceExtension),
-                            &nameUnicode, FILE_DEVICE_UNKNOWN,
-                            FILE_DEVICE_SECURE_OPEN, FALSE, &DummyDeviceObject);
-    if (!NT_SUCCESS(status))
-    {
-        DbgPrint("Can't create root, err=%x\n", status);
-        return status;
-    }
     return STATUS_SUCCESS;
 }
 
@@ -192,7 +134,6 @@ NetioComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
     UserIrp->IoStatus.Status = Irp->IoStatus.Status;
     UserIrp->IoStatus.Information = Irp->IoStatus.Information;
 
-    RemoveEntryList(&UserIrp->Tail.Overlay.ListEntry);
     IoCompleteRequest(UserIrp, IO_NETWORK_INCREMENT);
 
     SocketPut(c->socket);
@@ -221,7 +162,10 @@ WskControlSocket(
     {
         DbgPrint("WskControlSocket: Socket is NULL\n");
         status = STATUS_INVALID_PARAMETER;
+        goto err_out;
     }
+    IoSetNextIrpStackLocation(Irp);
+
     switch (RequestType)
     {
         case WskSetOption:
@@ -290,21 +234,28 @@ WskControlSocket(
         default:
             DbgPrint("WskControlSocket: Option %d Not implemented\n", RequestType);
     }
-    if (Irp != NULL)
-    {
-        Irp->IoStatus.Status = status;
-    }
-    return status;
+
+err_out:
+    Irp->IoStatus.Status = status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 static NTSTATUS WSKAPI
 WskCloseSocket(_In_ PWSK_SOCKET Socket, _Inout_ PIRP Irp)
 {
+    NTSTATUS status = STATUS_SUCCESS;
     struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
 
+    IoSetNextIrpStackLocation(Irp);
+
     SocketPut(s);
-    /* TODO: DummyCallDriver and IoComplete */
-    return STATUS_SUCCESS;
+
+    Irp->IoStatus.Status = status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 static struct _TRANSPORT_ADDRESS *
@@ -358,15 +309,19 @@ WskBind(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR LocalAddress, _Reserved_ ULONG F
     NTSTATUS status;
     struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
     PTRANSPORT_ADDRESS ta = TdiTransportAddressFromSocketAddress(LocalAddress);
+
+    IoSetNextIrpStackLocation(Irp);
+
     if (ta == NULL)
     {
         Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out;
     }
-    if (s->LocalAddressHandle != INVALID_HANDLE_VALUE)
+    if (s->LocalAddressHandle != NULL)
     {
         ZwClose(s->LocalAddressHandle);
-        s->LocalAddressHandle = INVALID_HANDLE_VALUE;
+        s->LocalAddressHandle = NULL;
         s->LocalAddressFile = NULL;
     }
 
@@ -378,8 +333,11 @@ WskBind(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR LocalAddress, _Reserved_ ULONG F
     }
     ExFreePoolWithTag(ta, 'ADDR');
 
+err_out:
     Irp->IoStatus.Status = status;
-    return status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 enum direction
@@ -405,26 +363,13 @@ WskSendTo(
     void *BufferData;
     struct NetioContext *nc;
 
-#if 0
-    if (DummyDeviceObject == NULL)
-    {
-        DbgPrint("DummyDeviceObject is NULL, was the DriverEntry funtion called?\n");
-        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-        return STATUS_INVALID_PARAMETER;        /* TODO: something more meaningful */
-    }
-#endif
+    IoSetNextIrpStackLocation(Irp);
 
-    /* Call ourselves. Sets status to pending. The interesting
-     * part happens later.
-     */
-
-    DummyCallDriver(Irp);
-
+    status = STATUS_INSUFFICIENT_RESOURCES;
     nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
     if (nc == NULL)
     {
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out;
     }
     nc->socket = s;
     nc->UserIrp = Irp;
@@ -432,45 +377,53 @@ WskSendTo(
     TargetConnectionInfo = TdiConnectionInfoFromSocketAddress(RemoteAddress);
     if (TargetConnectionInfo == NULL)
     {
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out_free_nc;
     }
+
+	/* TODO: @thomasfabber: how do I undo this in case the
+         * TdiSendDatagram routine fails? Or does it handle
+         * that gracefully?
+         */
 
     BufferData = MmGetSystemAddressForMdlSafe(Buffer->Mdl, NormalPagePriority);
     if (BufferData == NULL)
     {
         DbgPrint("Error mapping MDL\n");
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out_free_nc_and_tci;
     }
 
-    /* Some drivers (like WinDRBD) do not set this.
-     * But ReactOS seems to require this (else BSOD on completion).
-     */
-
-    if (Irp->Tail.Overlay.Thread == NULL)
-    {
-        Irp->Tail.Overlay.Thread = PsGetCurrentThread();
-    }
     IoMarkIrpPending(Irp);
     SocketGet(s);
-    /* TODO: protect by spinlock */
-    /* TODO: still needed? */
-    InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
 
     /* This will create a tdiIrp: */
     status = TdiSendDatagram(&tdiIrp, s->LocalAddressFile, ((char *)BufferData) + Buffer->Offset,
                         Buffer->Length, TargetConnectionInfo, NetioComplete, nc);
 
-    /* TODO: check this again. I would assume if the TDI helper function
-       returns any error, the completion function is not called.
+    /* If allocating tdiIrp fails we get here.
+     * Call the IoCompletion of the application's Irp so this Irp
+     * gets freed.
      */
     if (!NT_SUCCESS(status))
     {
         SocketPut(s);
-        ExFreePoolWithTag(nc, 'NEIO');
+        goto err_out_free_nc_and_tci_unmap;
     }
-    return status;
+    return STATUS_PENDING;
+
+err_out_free_nc_and_tci_unmap:
+    /* TODO: implement freeing Buffer mmap */
+
+err_out_free_nc_and_tci:
+    ExFreePool(TargetConnectionInfo);
+
+err_out_free_nc:
+    ExFreePoolWithTag(nc, 'NEIO');
+
+err_out:
+    Irp->IoStatus.Status = status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 static NTSTATUS WSKAPI
@@ -569,84 +522,72 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     NTSTATUS status;
     struct NetioContext *nc;
 
+    IoSetNextIrpStackLocation(Irp);
 
-    /* Call ourselves. Sets status to pending. The interesting
-     * part happens later.
-     */
-#if 0
-    if (DummyDeviceObject == NULL)
+    status = STATUS_INVALID_PARAMETER;
+    if (s->LocalAddressHandle == NULL)
     {
-        DbgPrint("DummyDeviceObject is NULL, was the DriverEntry funtion called?\n");
-        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-        return STATUS_INVALID_PARAMETER;        /* TODO: something more meaningful */
+        DbgPrint("LocalAddressHandle is not set, need to bind your socket before connecting\n");
+        goto err_out;
     }
-#endif
-    DummyCallDriver(Irp);
 
+    status = STATUS_INSUFFICIENT_RESOURCES;
     nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
     if (nc == NULL)
     {
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out;
     }
     nc->socket = s;
     nc->UserIrp = Irp;
 
     tdiIrp = NULL;
 
-    if (s->LocalAddressHandle == INVALID_HANDLE_VALUE)
-    {
-        DbgPrint("LocalAddressHandle is not set, need to bind your socket before connecting\n");
-        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-        return STATUS_INVALID_PARAMETER;
-    }
-
     status = TdiAssociateAddressFile(s->LocalAddressHandle, s->ConnectionFile);
     if (!NT_SUCCESS(status))
     {
-        Irp->IoStatus.Status = status;
-        return status;
+        goto err_out_free_nc;
     }
 
     TargetConnectionInfo = TdiConnectionInfoFromSocketAddress(RemoteAddress);
     if (TargetConnectionInfo == NULL)
     {
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out_free_nc;
     }
 
-    /* TODO: which address?? */
+    /* TODO: @thomasfabber: is this correct? */
     Ignored = TdiConnectionInfoFromSocketAddress(RemoteAddress);
     if (Ignored == NULL)
     {
-        ExFreePoolWithTag(TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
-
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out_free_nc_and_tci;
     }
 
-    /* Some drivers (like WinDRBD) do not set this.
-     * But ReactOS seems to require this (else BSOD on completion).
-     */
-
-    if (Irp->Tail.Overlay.Thread == NULL)
-    {
-        Irp->Tail.Overlay.Thread = PsGetCurrentThread();
-    }
     IoMarkIrpPending(Irp);
     SocketGet(s);
-    InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
 
     status = TdiConnect(&tdiIrp, s->ConnectionFile, TargetConnectionInfo, Ignored, NetioComplete, nc);
-    /* TODO: check this again. I would assume if the TDI helper function
-       returns any error, the completion function is not called.
+
+    /* If allocating tdiIrp fails we get here.
+     * Call the IoCompletion of the application's Irp so this Irp
+     * gets freed.
      */
     if (!NT_SUCCESS(status))
     {
         SocketPut(s);
-        ExFreePoolWithTag(nc, 'NEIO');
+        goto err_out_free_nc_and_tci;
     }
-    return status;
+    return STATUS_PENDING;
+
+err_out_free_nc_and_tci:
+    ExFreePool(TargetConnectionInfo);
+
+err_out_free_nc:
+    ExFreePoolWithTag(nc, 'NEIO');
+
+err_out:
+    Irp->IoStatus.Status = status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 static NTSTATUS WSKAPI
@@ -663,16 +604,13 @@ WskStreamIo(
     void *BufferData;
     struct NetioContext *nc;
 
-    /* Call ourselves. Sets status to pending. The interesting
-     * part happens later.
-     */
-    DummyCallDriver(Irp);
+    IoSetNextIrpStackLocation(Irp);
+    status = STATUS_INSUFFICIENT_RESOURCES;
 
     nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
     if (nc == NULL)
     {
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out;
     }
     nc->socket = s;
     nc->UserIrp = Irp;
@@ -681,21 +619,10 @@ WskStreamIo(
     if (BufferData == NULL)
     {
         DbgPrint("Error mapping MDL\n");
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        return STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out_free_nc;
     }
 
-    /* Some drivers (like WinDRBD) do not set this.
-     * But ReactOS seems to require this (else BSOD on completion).
-     */
-
-    if (Irp->Tail.Overlay.Thread == NULL)
-    {
-        Irp->Tail.Overlay.Thread = PsGetCurrentThread();
-    }
     IoMarkIrpPending(Irp);
-    /* TODO: protect by spinlock */
-    InsertTailList(&s->PendingUserIrps, &Irp->Tail.Overlay.ListEntry);
     SocketGet(s);
 
     if (Direction == DIR_SEND)
@@ -710,16 +637,27 @@ WskStreamIo(
                        Buffer->Length, NetioComplete, nc);
     }
 
-    /* TODO: check this again. I would assume if the TDI helper function
-       returns any error, the completion function is not called.
+    /* If allocating tdiIrp fails we get here.
+     * Call the IoCompletion of the application's Irp so this Irp
+     * gets freed.
      */
     if (!NT_SUCCESS(status))
     {
-        SocketPut(s);
-        ExFreePoolWithTag(nc, 'NEIO');
+        goto err_out_free_nc_unmap;
     }
+    return STATUS_PENDING;
 
-    return status;
+err_out_free_nc_unmap:
+    /* TODO: implement freeing Buffer mmap */
+
+err_out_free_nc:
+    ExFreePoolWithTag(nc, 'NEIO');
+
+err_out:
+    Irp->IoStatus.Status = status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 static NTSTATUS WSKAPI
@@ -772,10 +710,13 @@ WskSocket(
     struct _WSK_SOCKET_INTERNAL *s;
     NTSTATUS status;
 
+    IoSetNextIrpStackLocation(Irp);
+
     if (AddressFamily != AF_INET)
     {
         DbgPrint("Address family %d not supported\n", AddressFamily);
-        return STATUS_NOT_SUPPORTED;
+        status = STATUS_NOT_SUPPORTED;
+        goto err_out;
     }
     switch (SocketType)
     {
@@ -783,12 +724,14 @@ WskSocket(
             if (Protocol != IPPROTO_UDP)
             {
                 DbgPrint("SOCK_DGRAM only supports IPPROTO_UDP\n");
-                return STATUS_INVALID_PARAMETER;
+                status = STATUS_INVALID_PARAMETER;
+                goto err_out;
             }
             if (Flags != WSK_FLAG_DATAGRAM_SOCKET)
             {
                 DbgPrint("SOCK_DGRAM flags must be WSK_FLAG_DATAGRAM_SOCKET\n");
-                return STATUS_INVALID_PARAMETER;
+                status = STATUS_INVALID_PARAMETER;
+                goto err_out;
             }
             break;
 
@@ -796,41 +739,45 @@ WskSocket(
             if (Protocol != IPPROTO_TCP)
             {
                 DbgPrint("SOCK_STREAM only supports IPPROTO_TCP\n");
-                return STATUS_INVALID_PARAMETER;
+                status = STATUS_INVALID_PARAMETER;
+                goto err_out;
             }
             if ((Flags != WSK_FLAG_CONNECTION_SOCKET) && (Flags != WSK_FLAG_LISTEN_SOCKET))
             {
                 DbgPrint("SOCK_STREAM flags must be either WSK_FLAG_CONNECTION_SOCKET or WSK_FLAG_LISTEN_SOCKET\n");
-                return STATUS_INVALID_PARAMETER;
+                status = STATUS_INVALID_PARAMETER;
+                goto err_out;
             }
             break;
 
         case SOCK_RAW:
             DbgPrint("SOCK_RAW not supported\n");
-            return STATUS_NOT_SUPPORTED;
+            status = STATUS_NOT_SUPPORTED;
+            goto err_out;
 
         default:
-            return STATUS_INVALID_PARAMETER;
+            status = STATUS_INVALID_PARAMETER;
+            goto err_out;
     }
 
     s = ExAllocatePoolWithTag(NonPagedPool, sizeof(*s), 'SOCK');
     if (s == NULL)
     {
         DbgPrint("WskSocket: Out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto err_out;
     }
     s->family = AddressFamily;
     s->type = SocketType;
     s->proto = Protocol;
     s->flags = Flags;
     s->user_context = SocketContext;
-    s->LocalAddressHandle = INVALID_HANDLE_VALUE;
+    s->LocalAddressHandle = NULL;
     s->LocalAddressFile = NULL;
     s->Flags = 0;
     s->ListenDispatch = Dispatch;
     s->RefCount = 1;            /* SocketPut() is in WskCloseSocket */
-    s->ConnectionHandle = INVALID_HANDLE_VALUE;
-    InitializeListHead(&s->PendingUserIrps);
+    s->ConnectionHandle = NULL;
 
     switch (SocketType)
     {
@@ -847,7 +794,7 @@ WskSocket(
             {
                 DbgPrint("Could not open TDI handle, status is %x\n", status);
                 ExFreePoolWithTag(s, 'SOCK');
-                return status;
+                goto err_out;
             }
             if (Flags == WSK_FLAG_LISTEN_SOCKET && s->ListenDispatch == NULL)
             {
@@ -861,9 +808,13 @@ WskSocket(
     }
 
     Irp->IoStatus.Information = (ULONG_PTR) s;
-    Irp->IoStatus.Status = STATUS_SUCCESS;
+    status = STATUS_SUCCESS;
 
-    return STATUS_SUCCESS;
+err_out:
+    Irp->IoStatus.Status = status;
+    IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+
+    return STATUS_PENDING;
 }
 
 static struct _WSK_PROVIDER_DISPATCH provider_dispatch = {
