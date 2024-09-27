@@ -38,8 +38,7 @@
 #include <tdi_proto.h>
 #include <tdiconn.h>
 
-/* AFD also defines this. It is used by the tdi helpers */
-int DebugTraceLevel = MIN_TRACE;
+ULONG DebugTraceLevel = MIN_TRACE;
 
 #define TAG_NETIO 'OIEN'
 
@@ -53,16 +52,16 @@ int DebugTraceLevel = MIN_TRACE;
 #define AFD_SHARE_WILDCARD  0x2L
 #define AFD_SHARE_EXCLUSIVE 0x3L
 
-struct _WSK_SOCKET_INTERNAL
+typedef struct _WSK_SOCKET_INTERNAL
 {
-    struct _WSK_SOCKET s;
+    WSK_SOCKET s;
 
     ADDRESS_FAMILY family;      /* AF_INET or AF_INET6 */
-    unsigned short type;        /* SOCK_DGRAM, SOCK_STREAM, ... */
-    unsigned long proto;        /* IPPROTO_UDP, IPPROTO_TCP */
-    unsigned long flags;        /* WSK_FLAG_LISTEN_SOCKET, ... */
-    void *user_context;         /* parameter for callbacks, opaque */
-    struct _UNICODE_STRING TdiName;     /* \\Devices\\Tcp, \\Devices\\Udp */
+    USHORT type;                /* SOCK_DGRAM, SOCK_STREAM, ... */
+    ULONG proto;                /* IPPROTO_UDP, IPPROTO_TCP */
+    ULONG flags;                /* WSK_FLAG_LISTEN_SOCKET, ... */
+    PVOID user_context;         /* parameter for callbacks, opaque */
+    UNICODE_STRING TdiName;     /* \\Devices\\Tcp, \\Devices\\Udp */
 
     struct sockaddr LocalAddress;
     PFILE_OBJECT LocalAddressFile;
@@ -72,30 +71,30 @@ struct _WSK_SOCKET_INTERNAL
 
     /* Those exist for connection oriented (TCP/IP) sockets only */
     PFILE_OBJECT ConnectionFile;        /* Returned by TdiOpenConnectionEndpointFile() */
-    HANDLE ConnectionHandle;    /* Returned by TdiOpenConnectionEndpointFile() */
+    HANDLE ConnectionHandle;            /* Returned by TdiOpenConnectionEndpointFile() */
 
     /* Incoming connection callback function: */
-    const struct _WSK_CLIENT_LISTEN_DISPATCH *ListenDispatch;
-    int CallbackMask;
+    const WSK_CLIENT_LISTEN_DISPATCH *ListenDispatch;
+    UINT CallbackMask;
 
-    int Flags;                  /* SO_REUSEADDR, ... see ws2def.h */
-    int RefCount;               /* See SocketGet/SocketPut TODO: this should be atomic */
-};
+    UINT Flags;                          /* SO_REUSEADDR, ... see ws2def.h */
+    UINT RefCount;                       /* See SocketGet/SocketPut TODO: this should be atomic */
+} WSK_SOCKET_INTERNAL, *PWSK_SOCKET_INTERNAL;
 
 struct NetioContext
 {
     PIRP UserIrp;
-    struct _WSK_SOCKET_INTERNAL *socket;
+    PWSK_SOCKET_INTERNAL socket;
 };
 
 void
-SocketGet(struct _WSK_SOCKET_INTERNAL *s)
+SocketGet(PWSK_SOCKET_INTERNAL s)
 {
     s->RefCount++;
 }
 
 void
-SocketPut(struct _WSK_SOCKET_INTERNAL *s)
+SocketPut(PWSK_SOCKET_INTERNAL s)
 {
     s->RefCount--;
     if (s->RefCount == 0)
@@ -154,7 +153,7 @@ WskControlSocket(
     _Out_opt_ SIZE_T * OutputSizeReturned,
     _Inout_opt_ PIRP Irp)
 {
-    struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
+    PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
     NTSTATUS status = STATUS_NOT_IMPLEMENTED;
 
     if (s == NULL)
@@ -186,7 +185,7 @@ WskControlSocket(
                                 status = STATUS_INVALID_PARAMETER;
                                 break;
                             }
-                            int flag = *(int *)InputBuffer;
+                            UINT flag = *(UINT *)InputBuffer;
                             if (flag != 0)
                             {
                                 s->Flags |= ControlCode;
@@ -245,7 +244,7 @@ static NTSTATUS WSKAPI
 WskCloseSocket(_In_ PWSK_SOCKET Socket, _Inout_ PIRP Irp)
 {
     NTSTATUS status = STATUS_SUCCESS;
-    struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
+    PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
 
     IoSetNextIrpStackLocation(Irp);
 
@@ -257,10 +256,10 @@ WskCloseSocket(_In_ PWSK_SOCKET Socket, _Inout_ PIRP Irp)
     return STATUS_PENDING;
 }
 
-static struct _TRANSPORT_ADDRESS *
+static PTRANSPORT_ADDRESS
 TdiTransportAddressFromSocketAddress(PSOCKADDR SocketAddress)
 {
-    struct _TRANSPORT_ADDRESS *ta;
+    PTRANSPORT_ADDRESS ta;
 
     ta = ExAllocatePoolWithTag(NonPagedPool, sizeof(*ta) + sizeof(struct sockaddr), TAG_NETIO);
     if (ta == NULL)
@@ -306,7 +305,7 @@ static NTSTATUS WSKAPI
 WskBind(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR LocalAddress, _Reserved_ ULONG Flags, _Inout_ PIRP Irp)
 {
     NTSTATUS status;
-    struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
+    PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
     PTRANSPORT_ADDRESS ta = TdiTransportAddressFromSocketAddress(LocalAddress);
 
     IoSetNextIrpStackLocation(Irp);
@@ -356,7 +355,7 @@ WskSendTo(
     _Inout_ PIRP Irp)
 {
     PIRP tdiIrp = NULL;
-    struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
+    PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
     PTDI_CONNECTION_INFORMATION TargetConnectionInfo;
     NTSTATUS status;
     void *BufferData;
@@ -500,7 +499,7 @@ WskControlClient(
     return STATUS_NOT_IMPLEMENTED;
 }
 
-static struct _WSK_PROVIDER_DATAGRAM_DISPATCH UdpDispatch = {
+static WSK_PROVIDER_DATAGRAM_DISPATCH UdpDispatch = {
     .WskControlSocket = WskControlSocket,
     .WskCloseSocket = WskCloseSocket,
     .WskBind = WskBind,
@@ -517,7 +516,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
 {
     PTDI_CONNECTION_INFORMATION TargetConnectionInfo, Ignored;
     PIRP tdiIrp;
-    struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
+    PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
     NTSTATUS status;
     struct NetioContext *nc;
 
@@ -598,7 +597,7 @@ WskStreamIo(
     _In_ enum direction Direction)
 {
     PIRP tdiIrp = NULL;
-    struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
+    PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
     NTSTATUS status;
     void *BufferData;
     struct NetioContext *nc;
@@ -679,7 +678,7 @@ WskDisconnect(_In_ PWSK_SOCKET Socket, _In_opt_ PWSK_BUF Buffer, _In_ ULONG Flag
 }
 
 
-static struct _WSK_PROVIDER_CONNECTION_DISPATCH TcpDispatch = {
+static WSK_PROVIDER_CONNECTION_DISPATCH TcpDispatch = {
     .WskControlSocket = WskControlSocket,
     .WskCloseSocket = WskCloseSocket,
     .WskBind = WskBind,
@@ -706,7 +705,7 @@ WskSocket(
     _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor,
     _Inout_ PIRP Irp)
 {
-    struct _WSK_SOCKET_INTERNAL *s;
+    PWSK_SOCKET_INTERNAL s;
     NTSTATUS status;
 
     IoSetNextIrpStackLocation(Irp);
@@ -816,7 +815,7 @@ err_out:
     return STATUS_PENDING;
 }
 
-static struct _WSK_PROVIDER_DISPATCH provider_dispatch = {
+static WSK_PROVIDER_DISPATCH provider_dispatch = {
     .Version = 0,
     .Reserved = 0,
     .WskSocket = WskSocket,
@@ -825,7 +824,7 @@ static struct _WSK_PROVIDER_DISPATCH provider_dispatch = {
 };
 
 NTSTATUS WSKAPI
-WskRegister(_In_ struct _WSK_CLIENT_NPI *client_npi, _Out_ struct _WSK_REGISTRATION *reg)
+WskRegister(_In_ PWSK_CLIENT_NPI client_npi, _Out_ PWSK_REGISTRATION reg)
 {
     reg->ReservedRegistrationState = 42;
     reg->ReservedRegistrationContext = NULL;
@@ -835,7 +834,7 @@ WskRegister(_In_ struct _WSK_CLIENT_NPI *client_npi, _Out_ struct _WSK_REGISTRAT
 }
 
 NTSTATUS WSKAPI
-WskCaptureProviderNPI(_In_ struct _WSK_REGISTRATION * reg, _In_ ULONG wait, _Out_ struct _WSK_PROVIDER_NPI * npi)
+WskCaptureProviderNPI(_In_ PWSK_REGISTRATION reg, _In_ ULONG wait, _Out_ PWSK_PROVIDER_NPI npi)
 {
     DbgPrint("WskCaptureProviderNPI\n");
     npi->Client = NULL;
@@ -845,14 +844,14 @@ WskCaptureProviderNPI(_In_ struct _WSK_REGISTRATION * reg, _In_ ULONG wait, _Out
 }
 
 VOID WSKAPI
-WskReleaseProviderNPI(_In_ struct _WSK_REGISTRATION * reg)
+WskReleaseProviderNPI(_In_ PWSK_REGISTRATION reg)
 {
     DbgPrint("WskReleaseProviderNPI\n");
     /* noop */
 }
 
 VOID WSKAPI
-WskDeregister(_In_ struct _WSK_REGISTRATION *reg)
+WskDeregister(_In_ PWSK_REGISTRATION reg)
 {
     DbgPrint("WskDeregister\n");
     /* noop */
