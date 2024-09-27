@@ -85,6 +85,7 @@ struct NetioContext
 {
     PIRP UserIrp;
     PWSK_SOCKET_INTERNAL socket;
+    PTDI_CONNECTION_INFORMATION TargetConnectionInfo;
 };
 
 void
@@ -133,6 +134,7 @@ NetioComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
     IoCompleteRequest(UserIrp, IO_NETWORK_INCREMENT);
 
     SocketPut(c->socket);
+    ExFreePoolWithTag(c->TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
     ExFreePoolWithTag(c, TAG_NETIO);
 
     return STATUS_SUCCESS;
@@ -375,11 +377,7 @@ WskSendTo(
     {
         goto err_out_free_nc;
     }
-
-	/* TODO: @thomasfabber: how do I undo this in case the
-         * TdiSendDatagram routine fails? Or does it handle
-         * that gracefully?
-         */
+    nc->TargetConnectionInfo = TargetConnectionInfo;
 
     BufferData = MmGetSystemAddressForMdlSafe(Buffer->Mdl, NormalPagePriority);
     if (BufferData == NULL)
@@ -549,6 +547,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     {
         goto err_out_free_nc;
     }
+    nc->TargetConnectionInfo = TargetConnectionInfo;
 
     /* TODO: @thomasfabber: is this correct? */
     Ignored = TdiConnectionInfoFromSocketAddress(RemoteAddress);
@@ -610,6 +609,7 @@ WskStreamIo(
     }
     nc->socket = s;
     nc->UserIrp = Irp;
+    nc->TargetConnectionInfo = NULL;
 
     BufferData = MmGetSystemAddressForMdlSafe(Buffer->Mdl, NormalPagePriority);
     if (BufferData == NULL)
