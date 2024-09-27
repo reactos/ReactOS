@@ -29,7 +29,6 @@
 #include <ntifs.h>
 #include <wsk.h>
 #include <ndis.h>
-#include <windef.h>
 #include <netio_debug.h>
 
 #include <tdi.h>
@@ -40,7 +39,7 @@
 #include <tdiconn.h>
 
 /* AFD also defines this. It is used by the tdi helpers */
-DWORD DebugTraceLevel = MIN_TRACE;
+int DebugTraceLevel = MIN_TRACE;
 
 #ifndef TAG_AFD_TDI_CONNECTION_INFORMATION
 #define TAG_AFD_TDI_CONNECTION_INFORMATION 'cTfA'

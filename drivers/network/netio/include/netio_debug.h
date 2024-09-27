@@ -22,7 +22,7 @@
 
 #if DBG
 
-extern DWORD DebugTraceLevel;
+extern int DebugTraceLevel;
 
 #ifdef _MSC_VER
 
