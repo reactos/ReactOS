@@ -112,7 +112,7 @@ SocketPut(struct _WSK_SOCKET_INTERNAL *s)
             s->ConnectionHandle = NULL;
             s->ConnectionFile = NULL;
         }
-        ExFreePool(s);
+        ExFreePoolWithTag(s, TAG_NETIO);
     }
 }
 
@@ -413,7 +413,7 @@ err_out_free_nc_and_tci_unmap:
     /* TODO: implement freeing Buffer mmap */
 
 err_out_free_nc_and_tci:
-    ExFreePool(TargetConnectionInfo);
+    ExFreePoolWithTag(TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
 
 err_out_free_nc:
     ExFreePoolWithTag(nc, TAG_NETIO);
@@ -577,7 +577,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     return STATUS_PENDING;
 
 err_out_free_nc_and_tci:
-    ExFreePool(TargetConnectionInfo);
+    ExFreePoolWithTag(TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
 
 err_out_free_nc:
     ExFreePoolWithTag(nc, TAG_NETIO);
