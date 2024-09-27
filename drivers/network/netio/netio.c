@@ -469,18 +469,18 @@ WskGetRemoteAddress(_In_ PWSK_SOCKET Socket, _Out_ PSOCKADDR RemoteAddress, _Ino
 
 static NTSTATUS WSKAPI
 WskSocketConnect(
-    PWSK_CLIENT Client,
-    USHORT SocketType,
-    ULONG Protocol,
-    PSOCKADDR LocalAddress,
-    PSOCKADDR RemoteAddress,
-    ULONG Flags,
-    PVOID SocketContext,
-    const WSK_CLIENT_CONNECTION_DISPATCH * Dispatch,
-    PEPROCESS OwningProcess,
-    PETHREAD OwningThread,
-    PSECURITY_DESCRIPTOR SecurityDescriptor,
-    PIRP Irp)
+    _In_ PWSK_CLIENT Client,
+    _In_ USHORT SocketType,
+    _In_ ULONG Protocol,
+    _In_ PSOCKADDR LocalAddress,
+    _In_ PSOCKADDR RemoteAddress,
+    _In_ ULONG Flags,
+    _In_opt_ PVOID SocketContext,
+    _In_opt_ const WSK_CLIENT_CONNECTION_DISPATCH * Dispatch,
+    _In_opt_ PEPROCESS OwningProcess,
+    _In_opt_ PETHREAD OwningThread,
+    _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor,
+    _Inout_ PIRP Irp)
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
@@ -595,7 +595,7 @@ WskStreamIo(
     _In_ PWSK_BUF Buffer,
     _In_ ULONG Flags,
      _Inout_ PIRP Irp,
-    enum direction Direction)
+    _In_ enum direction Direction)
 {
     PIRP tdiIrp = NULL;
     struct _WSK_SOCKET_INTERNAL *s = (struct _WSK_SOCKET_INTERNAL *)Socket;
@@ -694,17 +694,17 @@ static struct _WSK_PROVIDER_CONNECTION_DISPATCH TcpDispatch = {
 
 static NTSTATUS WSKAPI
 WskSocket(
-    PWSK_CLIENT Client,
-    ADDRESS_FAMILY AddressFamily,
-    USHORT SocketType,
-    ULONG Protocol,
-    ULONG Flags,
-    PVOID SocketContext,
-    const VOID * Dispatch,
-    PEPROCESS OwningProcess,
-    PETHREAD OwningThread,
-    PSECURITY_DESCRIPTOR SecurityDescriptor,
-    PIRP Irp)
+    _In_ PWSK_CLIENT Client,
+    _In_ ADDRESS_FAMILY AddressFamily,
+    _In_ USHORT SocketType,
+    _In_ ULONG Protocol,
+    _In_ ULONG Flags,
+    _In_opt_ PVOID SocketContext,
+    _In_opt_ const VOID * Dispatch,
+    _In_opt_ PEPROCESS OwningProcess,
+    _In_opt_ PETHREAD OwningThread,
+    _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor,
+    _Inout_ PIRP Irp)
 {
     struct _WSK_SOCKET_INTERNAL *s;
     NTSTATUS status;
@@ -825,7 +825,7 @@ static struct _WSK_PROVIDER_DISPATCH provider_dispatch = {
 };
 
 NTSTATUS WSKAPI
-WskRegister(struct _WSK_CLIENT_NPI *client_npi, struct _WSK_REGISTRATION *reg)
+WskRegister(_In_ struct _WSK_CLIENT_NPI *client_npi, _Out_ struct _WSK_REGISTRATION *reg)
 {
     reg->ReservedRegistrationState = 42;
     reg->ReservedRegistrationContext = NULL;
@@ -835,7 +835,7 @@ WskRegister(struct _WSK_CLIENT_NPI *client_npi, struct _WSK_REGISTRATION *reg)
 }
 
 NTSTATUS WSKAPI
-WskCaptureProviderNPI(struct _WSK_REGISTRATION * reg, ULONG wait, struct _WSK_PROVIDER_NPI * npi)
+WskCaptureProviderNPI(_In_ struct _WSK_REGISTRATION * reg, _In_ ULONG wait, _Out_ struct _WSK_PROVIDER_NPI * npi)
 {
     DbgPrint("WskCaptureProviderNPI\n");
     npi->Client = NULL;
@@ -845,14 +845,14 @@ WskCaptureProviderNPI(struct _WSK_REGISTRATION * reg, ULONG wait, struct _WSK_PR
 }
 
 VOID WSKAPI
-WskReleaseProviderNPI(struct _WSK_REGISTRATION * reg)
+WskReleaseProviderNPI(_In_ struct _WSK_REGISTRATION * reg)
 {
     DbgPrint("WskReleaseProviderNPI\n");
     /* noop */
 }
 
 VOID WSKAPI
-WskDeregister(struct _WSK_REGISTRATION *reg)
+WskDeregister(_In_ struct _WSK_REGISTRATION *reg)
 {
     DbgPrint("WskDeregister\n");
     /* noop */
