@@ -118,8 +118,6 @@ SocketPut(PWSK_SOCKET_INTERNAL s)
 NTSTATUS NTAPI
 DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
-    DbgPrint("netio.sys DriverEntry compiled " __DATE__ " " __TIME__ "\n");
-
     return STATUS_SUCCESS;
 }
 
