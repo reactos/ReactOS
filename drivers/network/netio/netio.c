@@ -26,13 +26,11 @@
     We should have regression tests for that...
 */
 
-#include <wdm.h>
+#include <ntifs.h>
 #include <wsk.h>
 #include <ndis.h>
-#include <ntifs.h>
 #include <windef.h>
-/* From afd: this should be removed: */
-#include <debug.h>
+#include <netio_debug.h>
 
 #include <tdi.h>
 #include <tcpioctl.h>
