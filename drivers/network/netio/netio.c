@@ -134,7 +134,10 @@ NetioComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
     IoCompleteRequest(UserIrp, IO_NETWORK_INCREMENT);
 
     SocketPut(c->socket);
-    ExFreePoolWithTag(c->TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
+    if (c->TargetConnectionInfo != NULL)
+    {
+        ExFreePoolWithTag(c->TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
+    }
     ExFreePoolWithTag(c, TAG_NETIO);
 
     return STATUS_SUCCESS;
