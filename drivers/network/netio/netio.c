@@ -41,6 +41,8 @@
 /* AFD also defines this. It is used by the tdi helpers */
 int DebugTraceLevel = MIN_TRACE;
 
+#define TAG_NETIO 'OIEN'
+
 #ifndef TAG_AFD_TDI_CONNECTION_INFORMATION
 #define TAG_AFD_TDI_CONNECTION_INFORMATION 'cTfA'
 #endif
@@ -134,7 +136,7 @@ NetioComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
     IoCompleteRequest(UserIrp, IO_NETWORK_INCREMENT);
 
     SocketPut(c->socket);
-    ExFreePoolWithTag(c, 'NEIO');
+    ExFreePoolWithTag(c, TAG_NETIO);
 
     return STATUS_SUCCESS;
 }
@@ -260,7 +262,7 @@ TdiTransportAddressFromSocketAddress(PSOCKADDR SocketAddress)
 {
     struct _TRANSPORT_ADDRESS *ta;
 
-    ta = ExAllocatePoolWithTag(NonPagedPool, sizeof(*ta) + sizeof(struct sockaddr), 'ADDR');
+    ta = ExAllocatePoolWithTag(NonPagedPool, sizeof(*ta) + sizeof(struct sockaddr), TAG_NETIO);
     if (ta == NULL)
     {
         DbgPrint("TdiTransportAddressFromSocketAddress: Out of memory\n");
@@ -287,7 +289,7 @@ TdiConnectionInfoFromSocketAddress(PSOCKADDR SocketAddress)
         return NULL;
 
     status = TdiBuildConnectionInfo(&ConnectionInformation, TargetAddress);
-    ExFreePoolWithTag(TargetAddress, 'ADDR');
+    ExFreePoolWithTag(TargetAddress, TAG_NETIO);
 
     if (!NT_SUCCESS(status))
     {
@@ -328,7 +330,7 @@ WskBind(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR LocalAddress, _Reserved_ ULONG F
     {
         memcpy(&s->LocalAddress, LocalAddress, sizeof(s->LocalAddress));
     }
-    ExFreePoolWithTag(ta, 'ADDR');
+    ExFreePoolWithTag(ta, TAG_NETIO);
 
 err_out:
     Irp->IoStatus.Status = status;
@@ -363,7 +365,7 @@ WskSendTo(
     IoSetNextIrpStackLocation(Irp);
 
     status = STATUS_INSUFFICIENT_RESOURCES;
-    nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
+    nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), TAG_NETIO);
     if (nc == NULL)
     {
         goto err_out;
@@ -414,7 +416,7 @@ err_out_free_nc_and_tci:
     ExFreePool(TargetConnectionInfo);
 
 err_out_free_nc:
-    ExFreePoolWithTag(nc, 'NEIO');
+    ExFreePoolWithTag(nc, TAG_NETIO);
 
 err_out:
     Irp->IoStatus.Status = status;
@@ -529,7 +531,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     }
 
     status = STATUS_INSUFFICIENT_RESOURCES;
-    nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
+    nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), TAG_NETIO);
     if (nc == NULL)
     {
         goto err_out;
@@ -578,7 +580,7 @@ err_out_free_nc_and_tci:
     ExFreePool(TargetConnectionInfo);
 
 err_out_free_nc:
-    ExFreePoolWithTag(nc, 'NEIO');
+    ExFreePoolWithTag(nc, TAG_NETIO);
 
 err_out:
     Irp->IoStatus.Status = status;
@@ -604,7 +606,7 @@ WskStreamIo(
     IoSetNextIrpStackLocation(Irp);
     status = STATUS_INSUFFICIENT_RESOURCES;
 
-    nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), 'NEIO');
+    nc = ExAllocatePoolWithTag(NonPagedPool, sizeof(*nc), TAG_NETIO);
     if (nc == NULL)
     {
         goto err_out;
@@ -648,7 +650,7 @@ err_out_free_nc_unmap:
     /* TODO: implement freeing Buffer mmap */
 
 err_out_free_nc:
-    ExFreePoolWithTag(nc, 'NEIO');
+    ExFreePoolWithTag(nc, TAG_NETIO);
 
 err_out:
     Irp->IoStatus.Status = status;
@@ -757,7 +759,7 @@ WskSocket(
             goto err_out;
     }
 
-    s = ExAllocatePoolWithTag(NonPagedPool, sizeof(*s), 'SOCK');
+    s = ExAllocatePoolWithTag(NonPagedPool, sizeof(*s), TAG_NETIO);
     if (s == NULL)
     {
         DbgPrint("WskSocket: Out of memory\n");
@@ -790,7 +792,7 @@ WskSocket(
             if (status != STATUS_SUCCESS)
             {
                 DbgPrint("Could not open TDI handle, status is %x\n", status);
-                ExFreePoolWithTag(s, 'SOCK');
+                ExFreePoolWithTag(s, TAG_NETIO);
                 goto err_out;
             }
             if (Flags == WSK_FLAG_LISTEN_SOCKET && s->ListenDispatch == NULL)
