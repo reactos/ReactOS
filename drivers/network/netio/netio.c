@@ -5,12 +5,6 @@
  * COPYRIGHT:   Copyright 2023-2024 Johannes Thoma <johannes@johannesthoma.com>
  */
 
-/* We are a NT6+ driver */
-#undef _WIN32_WINNT
-#define _WIN32_WINNT 0x600
-#undef WINVER
-#define WINVER 0x600
-
 /* TODOs:
     Done: Clean up socket in WskCloseSocket (have RefCount and
     SocketGet / SocketPut functions).
@@ -27,6 +21,8 @@
 */
 
 #include <ntifs.h>
+#include <netiodef.h>
+#include <ws2def.h>
 #include <wsk.h>
 #include <ndis.h>
 #include <netio_debug.h>
