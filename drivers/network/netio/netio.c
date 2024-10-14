@@ -799,7 +799,8 @@ WskSocket(
 
         default:
             DbgPrint("Socket type not yet supported\n");
-            /* A little bit later this probably crashes */
+            status = STATUS_NOT_SUPPORTED;
+            goto err_out;
     }
 
     Irp->IoStatus.Information = (ULONG_PTR) s;
