@@ -382,6 +382,7 @@ WskSendTo(
         goto err_out_free_nc;
     }
     nc->TargetConnectionInfo = TargetConnectionInfo;
+    nc->PeerAddrRet = NULL;
 
     BufferData = MmGetSystemAddressForMdlSafe(Buffer->Mdl, NormalPagePriority);
     if (BufferData == NULL)
@@ -615,6 +616,7 @@ WskStreamIo(
     nc->socket = s;
     nc->UserIrp = Irp;
     nc->TargetConnectionInfo = NULL;
+    nc->PeerAddrRet = NULL;
 
     BufferData = MmGetSystemAddressForMdlSafe(Buffer->Mdl, NormalPagePriority);
     if (BufferData == NULL)
