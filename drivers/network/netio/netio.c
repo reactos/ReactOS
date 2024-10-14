@@ -82,6 +82,7 @@ struct NetioContext
     PIRP UserIrp;
     PWSK_SOCKET_INTERNAL socket;
     PTDI_CONNECTION_INFORMATION TargetConnectionInfo;
+    PTDI_CONNECTION_INFORMATION PeerAddrRet;
 };
 
 void
@@ -133,6 +134,10 @@ NetioComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
     if (c->TargetConnectionInfo != NULL)
     {
         ExFreePoolWithTag(c->TargetConnectionInfo, TAG_AFD_TDI_CONNECTION_INFORMATION);
+    }
+    if (c->PeerAddrRet != NULL)
+    {
+        ExFreePoolWithTag(c->PeerAddrRet, TAG_NETIO);
     }
     ExFreePoolWithTag(c, TAG_NETIO);
 
@@ -509,7 +514,7 @@ static WSK_PROVIDER_DATAGRAM_DISPATCH UdpDispatch = {
 static NTSTATUS WSKAPI
 WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULONG Flags, _Inout_ PIRP Irp)
 {
-    PTDI_CONNECTION_INFORMATION TargetConnectionInfo, Ignored;
+    PTDI_CONNECTION_INFORMATION TargetConnectionInfo, PeerAddrRet;
     PIRP tdiIrp;
     PWSK_SOCKET_INTERNAL s = (PWSK_SOCKET_INTERNAL)Socket;
     NTSTATUS status;
@@ -548,17 +553,17 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
     }
     nc->TargetConnectionInfo = TargetConnectionInfo;
 
-    /* TODO: @thomasfabber: is this correct? */
-    Ignored = TdiConnectionInfoFromSocketAddress(RemoteAddress);
-    if (Ignored == NULL)
+    PeerAddrRet = ExAllocatePoolWithTag(NonPagedPool, sizeof(*PeerAddrRet), TAG_NETIO);
+    if (PeerAddrRet == NULL)
     {
         goto err_out_free_nc_and_tci;
     }
+    nc->PeerAddrRet = PeerAddrRet;
 
     IoMarkIrpPending(Irp);
     SocketGet(s);
 
-    status = TdiConnect(&tdiIrp, s->ConnectionFile, TargetConnectionInfo, Ignored, NetioComplete, nc);
+    status = TdiConnect(&tdiIrp, s->ConnectionFile, TargetConnectionInfo, PeerAddrRet, NetioComplete, nc);
 
     /* If allocating tdiIrp fails we get here.
      * Call the IoCompletion of the application's Irp so this Irp
@@ -566,6 +571,7 @@ WskConnect(_In_ PWSK_SOCKET Socket, _In_ PSOCKADDR RemoteAddress, _Reserved_ ULO
      */
     if (!NT_SUCCESS(status))
     {
+        ExFreePoolWithTag(PeerAddrRet, TAG_NETIO);
         SocketPut(s);
         goto err_out_free_nc_and_tci;
     }
