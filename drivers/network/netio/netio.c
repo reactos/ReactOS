@@ -236,7 +236,7 @@ err_out:
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
 
-    return STATUS_PENDING;
+    return status;
 }
 
 static NTSTATUS WSKAPI
@@ -334,7 +334,7 @@ err_out:
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
 
-    return STATUS_PENDING;
+    return status;
 }
 
 enum direction
@@ -416,7 +416,7 @@ err_out:
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
 
-    return STATUS_PENDING;
+    return status;
 }
 
 static NTSTATUS WSKAPI
@@ -581,7 +581,7 @@ err_out:
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
 
-    return STATUS_PENDING;
+    return status;
 }
 
 static NTSTATUS WSKAPI
@@ -652,7 +652,7 @@ err_out:
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
 
-    return STATUS_PENDING;
+    return status;
 }
 
 static NTSTATUS WSKAPI
@@ -809,7 +809,7 @@ err_out:
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
 
-    return STATUS_PENDING;
+    return status;
 }
 
 static WSK_PROVIDER_DISPATCH provider_dispatch = {
