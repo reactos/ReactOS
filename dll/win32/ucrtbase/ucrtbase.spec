@@ -290,6 +290,7 @@
 @ cdecl _create_locale(long str)
 @ cdecl _crt_at_quick_exit(ptr)
 @ cdecl _crt_atexit(ptr)
+@ cdecl -impsym atexit(ptr) _crt_atexit
 @ cdecl -stub _crt_debugger_hook(long)
 @ cdecl _ctime32(ptr)
 @ cdecl _ctime32_s(str long ptr)
