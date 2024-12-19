@@ -259,7 +259,7 @@ Les caractères d'espacement ne sont pas autorisés."
 et contenir seulement des lettres, chiffres, tirets et points. Les caractères d'espacement ne sont pas autorisés."
 
     IDS_ERROR_CREATE_PARTITION_TITLE "Créer une partition"
-    IDS_ERROR_CREATE_PARTITION "Echec lors de la création d'une nouvelle partition."
+    IDS_ERROR_CREATE_PARTITION "Échec lors de la création d'une nouvelle partition."
 
     IDS_WARN_DELETE_PARTITION_TITLE "Détruire la partition ?"
     IDS_WARN_DELETE_PARTITION "Êtes-vous sûr de vouloir détruire la partition sélectionnée ?"
@@ -276,13 +276,13 @@ le programme d'installation ne peut pas installer ReactOS.\
 
     IDS_ERROR_COULD_NOT_FORMAT "Le programme d'installation ne parvient actuellement pas à formater une partition dans %s.\n\
 \nCliquez sur OK pour continuer l'installation.\
-\nCliquez sur CANCEL pour quitter l'installation."
+\nCliquez sur Annuler pour quitter l'installation."
 
     IDS_ERROR_FORMATTING_PARTITION "Le programme d'installation ne parvient pas à formater la partition :\n %s\n"
 
     IDS_ERROR_COULD_NOT_CHECK "Le programme d'installation ne parvient actuellement pas à vérifier une partition formatée dans %s.\n\
 \nCliquez sur OK pour continuer l'installation.\
-\nCliquez sur CANCEL pour quitter l'installation."
+\nCliquez sur Annuler pour quitter l'installation."
 
     IDS_ERROR_CHECKING_PARTITION "ChkDsk a détecté des erreurs disque.\n(Status 0x%08lx)."
 
