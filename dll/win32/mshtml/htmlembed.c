@@ -16,7 +16,21 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "winreg.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     HTMLElement element;
@@ -96,7 +110,7 @@ static HRESULT WINAPI HTMLEmbedElement_get_hidden(IHTMLEmbedElement *iface, BSTR
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI HTMLEmbedElement_get_palete(IHTMLEmbedElement *iface, BSTR *p)
+static HRESULT WINAPI HTMLEmbedElement_get_palette(IHTMLEmbedElement *iface, BSTR *p)
 {
     HTMLEmbedElement *This = impl_from_IHTMLEmbedElement(iface);
     FIXME("(%p)->(%p)\n", This, p);
@@ -190,7 +204,7 @@ static const IHTMLEmbedElementVtbl HTMLEmbedElementVtbl = {
     HTMLEmbedElement_Invoke,
     HTMLEmbedElement_put_hidden,
     HTMLEmbedElement_get_hidden,
-    HTMLEmbedElement_get_palete,
+    HTMLEmbedElement_get_palette,
     HTMLEmbedElement_get_pluginspage,
     HTMLEmbedElement_put_src,
     HTMLEmbedElement_get_src,
@@ -253,8 +267,8 @@ static const tid_t HTMLEmbedElement_iface_tids[] = {
 static dispex_static_data_t HTMLEmbedElement_dispex = {
     NULL,
     DispHTMLEmbed_tid,
-    NULL,
-    HTMLEmbedElement_iface_tids
+    HTMLEmbedElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLEmbedElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)

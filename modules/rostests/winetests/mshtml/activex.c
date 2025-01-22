@@ -16,9 +16,28 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "precomp.h"
+#define COBJMACROS
+#define CONST_VTABLE
 
-#include <test_tlb.h>
+#include <wine/test.h>
+#include <stdarg.h>
+#include <stdio.h>
+
+#include "windef.h"
+#include "winbase.h"
+#include "ole2.h"
+#include "mshtml.h"
+#include "docobj.h"
+#include "hlink.h"
+#include "dispex.h"
+#include "mshtmhst.h"
+#include "activscp.h"
+#include "objsafe.h"
+#include "mshtmdid.h"
+#include "mshtml_test.h"
+
+#include "initguid.h"
+#include "test_tlb.h"
 
 #define DEFINE_EXPECT(func) \
     static BOOL expect_ ## func = FALSE, called_ ## func = FALSE
@@ -1130,8 +1149,8 @@ static HRESULT WINAPI OleObject_DoVerb(IOleObject *iface, LONG iVerb, LPMSG lpms
     ok(ip_frame != NULL, "ip_frame == NULL\n");
     ok(ip_uiwindow != NULL, "ip_uiwindow == NULL\n");
     ok((IOleInPlaceUIWindow*)ip_frame != ip_uiwindow, "ip_frame == ip_uiwindow\n");
-    ok(!memcmp(&pos_rect, lprcPosRect, sizeof(RECT)), "pos_rect != lpecPosRect\n");
-    ok(!memcmp(&clip_rect, lprcPosRect, sizeof(RECT)), "clip_rect != lpecPosRect\n");
+    ok(EqualRect(&pos_rect, lprcPosRect), "pos_rect != lpecPosRect\n");
+    ok(EqualRect(&clip_rect, lprcPosRect), "clip_rect != lpecPosRect\n");
     ok(frame_info.cb == sizeof(frame_info), "frame_info.cb = %d\n", frame_info.cb);
     ok(!frame_info.fMDIApp, "frame_info.fMDIApp = %x\n", frame_info.fMDIApp);
     ok(frame_info.hwndFrame != NULL, "frame_info.hwnd == NULL\n");
@@ -1550,7 +1569,7 @@ static void test_iface_wrapping(IHTMLObjectElement *elem)
     SET_EXPECT(wrapped_Release);
     unk = (void*)0xdeadbeef;
     hres = IHTMLObjectElement_QueryInterface(elem, &IID_ITestActiveX, (void**)&unk);
-    ok(hres == S_OK, "QueryInerface(IID_ITestActiveX failed: %08x\n", hres);
+    ok(hres == S_OK, "QueryInterface(IID_ITestActiveX failed: %08x\n", hres);
     CHECK_CALLED(QI_ITestActiveX);
     CHECK_CALLED(wrapped_AddRef);
     CHECK_CALLED(wrapped_Release);
@@ -1586,7 +1605,7 @@ static void test_iface_wrapping(IHTMLObjectElement *elem)
     SET_EXPECT(wrapped_Release);
     unk = (void*)0xdeadbeef;
     hres = IHTMLObjectElement_QueryInterface(elem, &IID_ITestActiveX, (void**)&unk2);
-    ok(hres == S_OK, "QueryInerface(IID_ITestActiveX failed: %08x\n", hres);
+    ok(hres == S_OK, "QueryInterface(IID_ITestActiveX failed: %08x\n", hres);
     CHECK_CALLED(QI_ITestActiveX);
     CHECK_CALLED(wrapped_AddRef);
     CHECK_CALLED(wrapped_Release);
@@ -2423,18 +2442,10 @@ static void test_flash_ax(void)
     /* Set in DoVerb */
     CHECK_CALLED(InPlaceObject_GetWindow);
     CHECK_CALLED(SetObjectRects);
-    if (winetest_interactive)
-    {
-        test_ui_activate();
-        test_container(notif_doc);
-        test_object_elem(notif_doc);
-    }
-    else
-    {
-        skip("Skipping test_ui_activate(). ROSTESTS-114.\n");
-        skip("Skipping test_container(notif_doc). ROSTESTS-114.\n");
-        skip("Skipping test_object_elem(notif_doc). ROSTESTS-114.\n");
-    }
+
+    test_ui_activate();
+    test_container(notif_doc);
+    test_object_elem(notif_doc);
 
     IOleClientSite_AddRef(client_site);
     cs = client_site;
@@ -2553,10 +2564,7 @@ static void test_event_binding(void)
     CHECK_CALLED(FindConnectionPoint);
     CHECK_CALLED(Advise);
 
-    if (winetest_interactive)
-        test_event_call();
-    else
-        skip("Skipping test_event_call(). ROSTESTS-114.\n");
+    test_event_call();
 
     SET_EXPECT(InPlaceDeactivate);
     SET_EXPECT(Close);

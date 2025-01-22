@@ -16,7 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
 #include "mshtml_private.h"
+
+#include "wine/debug.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     HTMLFrameBase framebase;
@@ -304,8 +317,8 @@ static const tid_t HTMLFrameElement_iface_tids[] = {
 static dispex_static_data_t HTMLFrameElement_dispex = {
     NULL,
     DispHTMLFrameElement_tid,
-    NULL,
-    HTMLFrameElement_iface_tids
+    HTMLFrameElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLFrameElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)

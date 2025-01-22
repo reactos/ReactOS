@@ -16,7 +16,25 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "commctrl.h"
+#include "ole2.h"
+#include "resource.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 #define TIMER_ID 0x1000
 
@@ -232,9 +250,8 @@ static HRESULT activate_window(HTMLDocumentObj *This)
         return hres;
     }
 
-    TRACE("got window context: %p %p {%d %d %d %d} {%d %d %d %d} {%d %x %p %p %d}\n",
-            pIPFrame, This->ip_window, posrect.left, posrect.top, posrect.right, posrect.bottom,
-            cliprect.left, cliprect.top, cliprect.right, cliprect.bottom,
+    TRACE("got window context: %p %p %s %s {%d %x %p %p %d}\n",
+            pIPFrame, This->ip_window, wine_dbgstr_rect(&posrect), wine_dbgstr_rect(&cliprect),
             frameinfo.cb, frameinfo.fMDIApp, frameinfo.hwndFrame, frameinfo.haccel, frameinfo.cAccelEntries);
 
     hres = IOleInPlaceSite_GetWindow(This->ipsite, &parent_hwnd);
@@ -490,7 +507,7 @@ static HRESULT WINAPI OleDocumentView_SetRect(IOleDocumentView *iface, LPRECT pr
 
     if(This->doc_obj->hwnd) {
         GetClientRect(This->doc_obj->hwnd, &rect);
-        if(memcmp(prcView, &rect, sizeof(RECT))) {
+        if(!EqualRect(prcView, &rect)) {
             InvalidateRect(This->doc_obj->hwnd, NULL, TRUE);
             SetWindowPos(This->doc_obj->hwnd, NULL, prcView->left, prcView->top, prcView->right,
                     prcView->bottom, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -633,7 +650,7 @@ static HRESULT WINAPI OleDocumentView_UIActivate(IOleDocumentView *iface, BOOL f
         if(This->doc_obj->ip_window)
             call_set_active_object(This->doc_obj->ip_window, &This->IOleInPlaceActiveObject_iface);
 
-        memset(&rcBorderWidths, 0, sizeof(rcBorderWidths));
+        SetRectEmpty(&rcBorderWidths);
         IOleInPlaceFrame_SetBorderSpace(This->doc_obj->frame, &rcBorderWidths);
 
         This->doc_obj->ui_active = TRUE;
@@ -680,14 +697,14 @@ static HRESULT WINAPI OleDocumentView_CloseView(IOleDocumentView *iface, DWORD d
     return S_OK;
 }
 
-static HRESULT WINAPI OleDocumentView_SaveViewState(IOleDocumentView *iface, LPSTREAM pstm)
+static HRESULT WINAPI OleDocumentView_SaveViewState(IOleDocumentView *iface, IStream *pstm)
 {
     HTMLDocument *This = impl_from_IOleDocumentView(iface);
     FIXME("(%p)->(%p)\n", This, pstm);
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI OleDocumentView_ApplyViewState(IOleDocumentView *iface, LPSTREAM pstm)
+static HRESULT WINAPI OleDocumentView_ApplyViewState(IOleDocumentView *iface, IStream *pstm)
 {
     HTMLDocument *This = impl_from_IOleDocumentView(iface);
     FIXME("(%p)->(%p)\n", This, pstm);

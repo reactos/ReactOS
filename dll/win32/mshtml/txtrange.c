@@ -16,7 +16,22 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+#include "mshtmcid.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 static const WCHAR brW[] = {'b','r',0};
 static const WCHAR hrW[] = {'h','r',0};
@@ -520,7 +535,7 @@ HRESULT get_node_text(HTMLDOMNode *node, BSTR *ret)
     if (!wstrbuf_init(&buf))
         return E_OUTOFMEMORY;
     wstrbuf_append_node_rec(&buf, node->nsnode);
-    if(buf.buf) {
+    if(buf.buf && *buf.buf) {
         *ret = SysAllocString(buf.buf);
         if(!*ret)
             hres = E_OUTOFMEMORY;
@@ -1715,7 +1730,6 @@ static const tid_t HTMLTxtRange_iface_tids[] = {
 static dispex_static_data_t HTMLTxtRange_dispex = {
     NULL,
     IHTMLTxtRange_tid,
-    NULL,
     HTMLTxtRange_iface_tids
 };
 

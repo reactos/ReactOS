@@ -16,7 +16,24 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 #define WM_PROCESSTASK 0x8008
 #define TIMER_ID 0x3000
@@ -166,7 +183,7 @@ static BOOL queue_timer(thread_data_t *thread_data, task_timer_t *timer)
     return FALSE;
 }
 
-HRESULT set_task_timer(HTMLInnerWindow *window, DWORD msec, BOOL interval, IDispatch *disp, LONG *id)
+HRESULT set_task_timer(HTMLInnerWindow *window, LONG msec, BOOL interval, IDispatch *disp, LONG *id)
 {
     thread_data_t *thread_data;
     task_timer_t *timer;
@@ -181,6 +198,9 @@ HRESULT set_task_timer(HTMLInnerWindow *window, DWORD msec, BOOL interval, IDisp
     timer = heap_alloc(sizeof(task_timer_t));
     if(!timer)
         return E_OUTOFMEMORY;
+
+    if(msec < 1)
+        msec = 1;
 
     timer->id = id_cnt++;
     timer->window = window;
@@ -198,7 +218,7 @@ HRESULT set_task_timer(HTMLInnerWindow *window, DWORD msec, BOOL interval, IDisp
     return S_OK;
 }
 
-HRESULT clear_task_timer(HTMLInnerWindow *window, BOOL interval, DWORD id)
+HRESULT clear_task_timer(HTMLInnerWindow *window, DWORD id)
 {
     thread_data_t *thread_data = get_thread_data(FALSE);
     task_timer_t *iter;
@@ -207,7 +227,7 @@ HRESULT clear_task_timer(HTMLInnerWindow *window, BOOL interval, DWORD id)
         return S_OK;
 
     LIST_FOR_EACH_ENTRY(iter, &thread_data->timer_list, task_timer_t, entry) {
-        if(iter->id == id && iter->window == window && !iter->interval == !interval) {
+        if(iter->id == id && iter->window == window) {
             release_task_timer(thread_data->thread_hwnd, iter);
             return S_OK;
         }

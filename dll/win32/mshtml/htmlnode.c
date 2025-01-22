@@ -16,7 +16,22 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+#include "htmlevent.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 static HTMLDOMNode *get_node_obj(IHTMLDOMNode*);
 static HRESULT create_node(HTMLDocumentNode*,nsIDOMNode*,HTMLDOMNode**);
@@ -421,11 +436,10 @@ static const tid_t HTMLDOMChildrenCollection_iface_tids[] = {
 static dispex_static_data_t HTMLDOMChildrenCollection_dispex = {
     &HTMLDOMChildrenCollection_dispex_vtbl,
     DispDOMChildrenCollection_tid,
-    NULL,
     HTMLDOMChildrenCollection_iface_tids
 };
 
-static IHTMLDOMChildrenCollection *create_child_collection(HTMLDocumentNode *doc, nsIDOMNodeList *nslist)
+IHTMLDOMChildrenCollection *create_child_collection(HTMLDocumentNode *doc, nsIDOMNodeList *nslist)
 {
     HTMLDOMChildrenCollection *ret;
 
@@ -1153,10 +1167,10 @@ HRESULT HTMLDOMNode_QI(HTMLDOMNode *This, REFIID riid, void **ppv)
         *ppv = &This->IHTMLDOMNode2_iface;
     }else if(IsEqualGUID(&IID_nsXPCOMCycleCollectionParticipant, riid)) {
         *ppv = &node_ccp;
-        return NS_OK;
+        return S_OK;
     }else if(IsEqualGUID(&IID_nsCycleCollectionISupports, riid)) {
         *ppv = &This->IHTMLDOMNode_iface;
-        return NS_OK;
+        return S_OK;
     }else if(dispex_query_interface(&This->event_target.dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {

@@ -16,7 +16,23 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
 #include "mshtml_private.h"
+#include "binding.h"
+#include "htmlevent.h"
+
+#include "wine/debug.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 static const WCHAR autoW[] = {'a','u','t','o',0};
 static const WCHAR yesW[] = {'y','e','s',0};
@@ -25,7 +41,7 @@ static const WCHAR pxW[] = {'p','x',0};
 
 HRESULT set_frame_doc(HTMLFrameBase *frame, nsIDOMDocument *nsdoc)
 {
-    nsIDOMWindow *nswindow;
+    mozIDOMWindowProxy *mozwindow;
     HTMLOuterWindow *window;
     nsresult nsres;
     HRESULT hres = S_OK;
@@ -33,15 +49,21 @@ HRESULT set_frame_doc(HTMLFrameBase *frame, nsIDOMDocument *nsdoc)
     if(frame->content_window)
         return S_OK;
 
-    nsres = nsIDOMDocument_GetDefaultView(nsdoc, &nswindow);
-    if(NS_FAILED(nsres) || !nswindow)
+    nsres = nsIDOMDocument_GetDefaultView(nsdoc, &mozwindow);
+    if(NS_FAILED(nsres) || !mozwindow)
         return E_FAIL;
 
-    window = nswindow_to_window(nswindow);
-    if(!window)
+    window = mozwindow_to_window(mozwindow);
+    if(!window) {
+        nsIDOMWindow *nswindow;
+        nsres = mozIDOMWindowProxy_QueryInterface(mozwindow, &IID_nsIDOMWindow, (void**)&nswindow);
+        assert(nsres == NS_OK);
+
         hres = HTMLOuterWindow_Create(frame->element.node.doc->basedoc.doc_obj, nswindow,
                 frame->element.node.doc->basedoc.window, &window);
-    nsIDOMWindow_Release(nswindow);
+        nsIDOMWindow_Release(nswindow);
+    }
+    mozIDOMWindowProxy_Release(mozwindow);
     if(FAILED(hres))
         return hres;
 

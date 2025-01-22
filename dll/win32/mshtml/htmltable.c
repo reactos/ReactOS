@@ -16,7 +16,21 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 struct HTMLTable {
     HTMLElement element;
@@ -54,13 +68,13 @@ static HRESULT var2str(const VARIANT *p, nsAString *nsstr)
         return nsAString_Init(nsstr, V_BSTR(p))?
             S_OK : E_OUTOFMEMORY;
     case VT_R8:
-        hres = VarBstrFromR8(V_R8(p), 0, 0, &str);
+        hres = VarBstrFromR8(V_R8(p), MAKELCID(MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US),SORT_DEFAULT), 0, &str);
         break;
     case VT_R4:
-        hres = VarBstrFromR4(V_R4(p), 0, 0, &str);
+        hres = VarBstrFromR4(V_R4(p), MAKELCID(MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US),SORT_DEFAULT), 0, &str);
         break;
     case VT_I4:
-        hres = VarBstrFromI4(V_I4(p), 0, 0, &str);
+        hres = VarBstrFromI4(V_I4(p), MAKELCID(MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US),SORT_DEFAULT), 0, &str);
         break;
     default:
         FIXME("unsupported arg %s\n", debugstr_variant(p));
@@ -1058,8 +1072,8 @@ static const tid_t HTMLTable_iface_tids[] = {
 static dispex_static_data_t HTMLTable_dispex = {
     NULL,
     DispHTMLTable_tid,
-    NULL,
-    HTMLTable_iface_tids
+    HTMLTable_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLTable_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)

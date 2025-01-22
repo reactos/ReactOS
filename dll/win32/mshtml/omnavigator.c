@@ -16,7 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 #ifdef __REACTOS__
 /* HACK This is a Vista+ API */
@@ -162,7 +175,6 @@ static const tid_t HTMLDOMImplementation_iface_tids[] = {
 static dispex_static_data_t HTMLDOMImplementation_dispex = {
     NULL,
     IHTMLDOMImplementation_tid,
-    NULL,
     HTMLDOMImplementation_iface_tids
 };
 
@@ -327,7 +339,6 @@ static const tid_t OmHistory_iface_tids[] = {
 static dispex_static_data_t OmHistory_dispex = {
     NULL,
     DispHTMLHistory_tid,
-    NULL,
     OmHistory_iface_tids
 };
 
@@ -483,7 +494,6 @@ static const tid_t HTMLPluginsCollection_iface_tids[] = {
 static dispex_static_data_t HTMLPluginsCollection_dispex = {
     NULL,
     DispCPlugins_tid,
-    NULL,
     HTMLPluginsCollection_iface_tids
 };
 
@@ -628,7 +638,6 @@ static const tid_t HTMLMimeTypesCollection_iface_tids[] = {
 static dispex_static_data_t HTMLMimeTypesCollection_dispex = {
     NULL,
     IHTMLMimeTypesCollection_tid,
-    NULL,
     HTMLMimeTypesCollection_iface_tids
 };
 
@@ -1073,7 +1082,6 @@ static const tid_t OmNavigator_iface_tids[] = {
 static dispex_static_data_t OmNavigator_dispex = {
     NULL,
     DispHTMLNavigator_tid,
-    NULL,
     OmNavigator_iface_tids
 };
 

@@ -16,7 +16,22 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
 #include "mshtml_private.h"
+
+#include "wine/debug.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 struct HTMLDOMTextNode {
     HTMLDOMNode node;
@@ -345,7 +360,6 @@ static const tid_t HTMLDOMTextNode_iface_tids[] = {
 static dispex_static_data_t HTMLDOMTextNode_dispex = {
     NULL,
     DispHTMLDOMTextNode_tid,
-    0,
     HTMLDOMTextNode_iface_tids
 };
 

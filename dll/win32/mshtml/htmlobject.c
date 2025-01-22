@@ -16,7 +16,23 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "winreg.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+#include "pluginhost.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     HTMLPluginContainer plugin_container;
@@ -757,8 +773,8 @@ static const tid_t HTMLObjectElement_iface_tids[] = {
 static dispex_static_data_t HTMLObjectElement_dispex = {
     NULL,
     DispHTMLObjectElement_tid,
-    NULL,
-    HTMLObjectElement_iface_tids
+    HTMLObjectElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLObjectElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)

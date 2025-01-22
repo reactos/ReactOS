@@ -16,7 +16,22 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+#include "htmlevent.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     HTMLElement element;
@@ -436,8 +451,8 @@ static const tid_t HTMLAreaElement_iface_tids[] = {
 static dispex_static_data_t HTMLAreaElement_dispex = {
     NULL,
     DispHTMLAreaElement_tid,
-    NULL,
-    HTMLAreaElement_iface_tids
+    HTMLAreaElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLAreaElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)

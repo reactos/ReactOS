@@ -16,7 +16,21 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 struct HTMLStyleSheet {
     DispatchEx dispex;
@@ -178,7 +192,6 @@ static const tid_t HTMLStyleSheetRulesCollection_iface_tids[] = {
 static dispex_static_data_t HTMLStyleSheetRulesCollection_dispex = {
     NULL,
     DispHTMLStyleSheetRulesCollection_tid,
-    NULL,
     HTMLStyleSheetRulesCollection_iface_tids
 };
 
@@ -368,7 +381,6 @@ static const tid_t HTMLStyleSheetsCollection_iface_tids[] = {
 static dispex_static_data_t HTMLStyleSheetsCollection_dispex = {
     NULL,
     DispHTMLStyleSheetsCollection_tid,
-    NULL,
     HTMLStyleSheetsCollection_iface_tids
 };
 
@@ -739,7 +751,6 @@ static const tid_t HTMLStyleSheet_iface_tids[] = {
 static dispex_static_data_t HTMLStyleSheet_dispex = {
     NULL,
     DispHTMLStyleSheet_tid,
-    NULL,
     HTMLStyleSheet_iface_tids
 };
 

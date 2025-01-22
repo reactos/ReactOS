@@ -16,7 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     DispatchEx dispex;
@@ -318,7 +331,6 @@ static const tid_t HTMLSelectionObject_iface_tids[] = {
 static dispex_static_data_t HTMLSelectionObject_dispex = {
     NULL,
     IHTMLSelectionObject_tid, /* FIXME: We have a test for that, but it doesn't expose IHTMLSelectionObject2 iface. */
-    NULL,
     HTMLSelectionObject_iface_tids
 };
 

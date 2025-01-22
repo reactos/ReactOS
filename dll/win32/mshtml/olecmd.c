@@ -16,7 +16,26 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+#include "shlguid.h"
+#include "mshtmdid.h"
+#include "idispids.h"
+#include "mshtmcid.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+#include "binding.h"
+#include "resource.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 #define NSCMD_COPY "cmd_copy"
 #define NSCMD_SELECTALL           "cmd_selectAll"
@@ -37,7 +56,7 @@ void do_ns_command(HTMLDocument *This, const char *cmd, nsICommandParams *nspara
         return;
     }
 
-    nsres = nsICommandManager_DoCommand(cmdmgr, cmd, nsparam, This->window->nswindow);
+    nsres = nsICommandManager_DoCommand(cmdmgr, cmd, nsparam, This->window->window_proxy);
     if(NS_FAILED(nsres))
         ERR("DoCommand(%s) failed: %08x\n", debugstr_a(cmd), nsres);
 

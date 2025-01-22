@@ -16,7 +16,21 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     DispatchEx dispex;
@@ -386,7 +400,7 @@ static BOOL is_elem_name(HTMLElement *elem, LPCWSTR name)
 static HRESULT get_item_idx(HTMLElementCollection *This, UINT idx, IDispatch **ret)
 {
     if(idx < This->len) {
-        *ret = (IDispatch*)This->elems[idx];
+        *ret = (IDispatch*)&This->elems[idx]->node.event_target.dispex.IDispatchEx_iface;
         IDispatch_AddRef(*ret);
     }
 
@@ -607,7 +621,6 @@ static const tid_t HTMLElementCollection_iface_tids[] = {
 static dispex_static_data_t HTMLElementCollection_dispex = {
     &HTMLElementColection_dispex_vtbl,
     DispHTMLElementCollection_tid,
-    NULL,
     HTMLElementCollection_iface_tids
 };
 
@@ -709,7 +722,8 @@ IHTMLElementCollection *create_collection_from_htmlcol(HTMLDocumentNode *doc, ns
     HTMLDOMNode *node;
     HRESULT hres = S_OK;
 
-    nsIDOMHTMLCollection_GetLength(nscol, &length);
+    if(nscol)
+        nsIDOMHTMLCollection_GetLength(nscol, &length);
 
     buf.len = buf.size = length;
     if(buf.len) {

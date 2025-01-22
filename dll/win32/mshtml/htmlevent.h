@@ -16,7 +16,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#ifdef __REACTOS__
 #pragma once
+#endif // __REACTOS__
 
 typedef enum {
     EVENTID_ABORT,
@@ -32,11 +34,13 @@ typedef enum {
     EVENTID_ERROR,
     EVENTID_FOCUS,
     EVENTID_FOCUSIN,
+    EVENTID_FOCUSOUT,
     EVENTID_HELP,
     EVENTID_KEYDOWN,
     EVENTID_KEYPRESS,
     EVENTID_KEYUP,
     EVENTID_LOAD,
+    EVENTID_MESSAGE,
     EVENTID_MOUSEDOWN,
     EVENTID_MOUSEMOVE,
     EVENTID_MOUSEOUT,
@@ -49,13 +53,14 @@ typedef enum {
     EVENTID_SCROLL,
     EVENTID_SELECTSTART,
     EVENTID_SUBMIT,
+    EVENTID_UNLOAD,
     EVENTID_LAST
 } eventid_t;
 
 eventid_t str_to_eid(LPCWSTR) DECLSPEC_HIDDEN;
 void check_event_attr(HTMLDocumentNode*,nsIDOMHTMLElement*) DECLSPEC_HIDDEN;
 void release_event_target(event_target_t*) DECLSPEC_HIDDEN;
-void fire_event(HTMLDocumentNode*,eventid_t,BOOL,nsIDOMNode*,nsIDOMEvent*,IDispatch*) DECLSPEC_HIDDEN;
+void fire_event(HTMLDocumentNode*,eventid_t,BOOL,HTMLDOMNode*,nsIDOMEvent*,IDispatch*) DECLSPEC_HIDDEN;
 HRESULT set_event_handler(EventTarget*,eventid_t,VARIANT*) DECLSPEC_HIDDEN;
 HRESULT get_event_handler(EventTarget*,eventid_t,VARIANT*) DECLSPEC_HIDDEN;
 HRESULT attach_event(EventTarget*,BSTR,IDispatch*,VARIANT_BOOL*) DECLSPEC_HIDDEN;

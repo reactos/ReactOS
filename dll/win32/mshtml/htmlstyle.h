@@ -16,7 +16,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#ifdef __REACTOS__
 #pragma once
+#endif // __REACTOS__
 
 struct HTMLStyle {
     DispatchEx dispex;
@@ -124,13 +126,9 @@ typedef enum {
 } styleid_t;
 
 HRESULT HTMLStyle_Create(HTMLElement*,HTMLStyle**) DECLSPEC_HIDDEN;
-void HTMLStyle2_Init(HTMLStyle*) DECLSPEC_HIDDEN;
-void HTMLStyle3_Init(HTMLStyle*) DECLSPEC_HIDDEN;
 
 HRESULT get_nsstyle_attr(nsIDOMCSSStyleDeclaration*,styleid_t,BSTR*,DWORD) DECLSPEC_HIDDEN;
-HRESULT set_nsstyle_attr(nsIDOMCSSStyleDeclaration*,styleid_t,LPCWSTR,DWORD) DECLSPEC_HIDDEN;
 
-HRESULT set_nsstyle_attr_var(nsIDOMCSSStyleDeclaration *nsstyle, styleid_t sid, VARIANT *value, DWORD flags) DECLSPEC_HIDDEN;
 HRESULT get_nsstyle_attr_var(nsIDOMCSSStyleDeclaration *nsstyle, styleid_t sid, VARIANT *p, DWORD flags) DECLSPEC_HIDDEN;
 
 HRESULT get_elem_style(HTMLElement*,styleid_t,BSTR*) DECLSPEC_HIDDEN;

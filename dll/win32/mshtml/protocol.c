@@ -16,7 +16,23 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 /********************************************************************
  * common ProtocolFactory implementation
@@ -559,7 +575,7 @@ static ULONG WINAPI ResProtocol_AddRef(IInternetProtocol *iface)
 
 static ULONG WINAPI ResProtocol_Release(IInternetProtocol *iface)
 {
-    ResProtocol *This = (ResProtocol*)iface;
+    ResProtocol *This = ResProtocol_from_IInternetProtocol(iface);
     IUnknown *pUnkOuter = This->pUnkOuter;
     ULONG ref = InterlockedDecrement(&This->ref);
 

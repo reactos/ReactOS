@@ -16,7 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+
+#include "wine/debug.h"
+
 #include "mshtml_private.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     DispatchEx dispex;
@@ -181,7 +194,6 @@ static const tid_t HTMLStorage_iface_tids[] = {
 static dispex_static_data_t HTMLStorage_dispex = {
     NULL,
     IHTMLStorage_tid,
-    NULL,
     HTMLStorage_iface_tids
 };
 

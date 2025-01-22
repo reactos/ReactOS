@@ -16,7 +16,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#ifdef __REACTOS__
 #pragma once
+#endif // __REACTOS__
 
 typedef struct {
     HTMLElement element;
@@ -28,6 +30,8 @@ typedef struct {
     BOOL parse_on_bind;
     BOOL pending_readystatechange_event;
     READYSTATE readystate;
+    WCHAR *src_text; /* sctipt text downloaded from src */
+    BSCallback *binding; /* weak reference to current binding */
 } HTMLScriptElement;
 
 typedef struct {
@@ -37,10 +41,11 @@ typedef struct {
 
 HRESULT script_elem_from_nsscript(HTMLDocumentNode*,nsIDOMHTMLScriptElement*,HTMLScriptElement**) DECLSPEC_HIDDEN;
 void bind_event_scripts(HTMLDocumentNode*) DECLSPEC_HIDDEN;
+HRESULT load_script(HTMLScriptElement*,const WCHAR*,BOOL) DECLSPEC_HIDDEN;
 
 void release_script_hosts(HTMLInnerWindow*) DECLSPEC_HIDDEN;
 void connect_scripts(HTMLInnerWindow*) DECLSPEC_HIDDEN;
-void doc_insert_script(HTMLInnerWindow*,HTMLScriptElement*) DECLSPEC_HIDDEN;
+void doc_insert_script(HTMLInnerWindow*,HTMLScriptElement*,BOOL) DECLSPEC_HIDDEN;
 IDispatch *script_parse_event(HTMLInnerWindow*,LPCWSTR) DECLSPEC_HIDDEN;
 HRESULT exec_script(HTMLInnerWindow*,const WCHAR*,const WCHAR*,VARIANT*) DECLSPEC_HIDDEN;
 void set_script_mode(HTMLOuterWindow*,SCRIPTMODE) DECLSPEC_HIDDEN;

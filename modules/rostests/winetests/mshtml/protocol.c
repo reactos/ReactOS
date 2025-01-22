@@ -16,11 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "precomp.h"
+#define COBJMACROS
 
-#include <shlwapi.h>
+#include <wine/test.h>
+#include <stdarg.h>
+#include <stdio.h>
 
-#include <initguid.h>
+#include "windef.h"
+#include "winbase.h"
+#include "ole2.h"
+#include "urlmon.h"
+#include "shlwapi.h"
+#include "wininet.h"
+
+#include "initguid.h"
 
 #define DEFINE_EXPECT(func) \
     static BOOL expect_ ## func = FALSE, called_ ## func = FALSE
@@ -711,7 +720,9 @@ static void test_about_protocol(void)
         hres = IInternetProtocolInfo_ParseUrl(protocol_info, about_blank_url, PARSE_DOMAIN, 0, buf,
                 sizeof(buf)/sizeof(buf[0]), &size, 0);
         ok(hres == S_OK || hres == E_FAIL, "ParseUrl failed: %08x\n", hres);
-        ok(buf[0] == '?', "buf changed\n");
+        ok(buf[0] == '?' || buf[0] == '\0' /* Win10 */,
+           "Expected buf to be unchanged or empty, got %s\n",
+           wine_dbgstr_w(buf));
         ok(size == sizeof(about_blank_url)/sizeof(WCHAR) ||
            size == sizeof(buf)/sizeof(buf[0]), /* IE8 */
            "size=%d\n", size);

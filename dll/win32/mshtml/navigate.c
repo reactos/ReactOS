@@ -16,10 +16,33 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "mshtml_private.h"
+#include "config.h"
 
-#include <hlguids.h>
-#include <htiface.h>
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+#define NONAMELESSUNION
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "winreg.h"
+#include "ole2.h"
+#include "hlguids.h"
+#include "shlguid.h"
+#include "wininet.h"
+#include "shlwapi.h"
+#include "htiface.h"
+#include "shdeprecated.h"
+
+#include "wine/debug.h"
+
+#include "mshtml_private.h"
+#include "htmlscript.h"
+#include "binding.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 #define CONTENT_LENGTH "Content-Length"
 #define UTF8_STR "utf-8"
@@ -477,8 +500,8 @@ static HRESULT WINAPI HttpNegotiate_GetRootSecurityId(IHttpNegotiate2 *iface,
         BYTE *pbSecurityId, DWORD *pcbSecurityId, DWORD_PTR dwReserved)
 {
     BSCallback *This = impl_from_IHttpNegotiate2(iface);
-    FIXME("(%p)->(%p %p %ld)\n", This, pbSecurityId, pcbSecurityId, dwReserved);
-    return E_NOTIMPL;
+    TRACE("(%p)->(%p %p %ld)\n", This, pbSecurityId, pcbSecurityId, dwReserved);
+    return E_NOTIMPL; /* FIXME */
 }
 
 static const IHttpNegotiate2Vtbl HttpNegotiate2Vtbl = {
@@ -904,6 +927,8 @@ static HRESULT on_start_nsrequest(nsChannelBSC *This)
 {
     nsresult nsres;
 
+    This->nschannel->binding = This;
+
     /* FIXME: it's needed for http connections from BindToObject. */
     if(!This->nschannel->response_status)
         This->nschannel->response_status = 200;
@@ -949,11 +974,15 @@ static void on_stop_nsrequest(nsChannelBSC *This, HRESULT result)
             WARN("OnStopRequest failed: %08x\n", nsres);
     }
 
-    if(This->nschannel && This->nschannel->load_group) {
-        nsres = nsILoadGroup_RemoveRequest(This->nschannel->load_group,
-                (nsIRequest*)&This->nschannel->nsIHttpChannel_iface, NULL, request_result);
-        if(NS_FAILED(nsres))
-            ERR("RemoveRequest failed: %08x\n", nsres);
+    if(This->nschannel) {
+        if(This->nschannel->load_group) {
+            nsres = nsILoadGroup_RemoveRequest(This->nschannel->load_group,
+                    (nsIRequest*)&This->nschannel->nsIHttpChannel_iface, NULL, request_result);
+            if(NS_FAILED(nsres))
+                ERR("RemoveRequest failed: %08x\n", nsres);
+        }
+        if(This->nschannel->binding == This)
+            This->nschannel->binding = NULL;
     }
 }
 
@@ -1194,8 +1223,11 @@ static void nsChannelBSC_destroy(BSCallback *bsc)
 {
     nsChannelBSC *This = nsChannelBSC_from_BSCallback(bsc);
 
-    if(This->nschannel)
+    if(This->nschannel) {
+        if(This->nschannel->binding == This)
+            This->nschannel->binding = NULL;
         nsIHttpChannel_Release(&This->nschannel->nsIHttpChannel_iface);
+    }
     if(This->nslistener)
         nsIStreamListener_Release(This->nslistener);
     if(This->nscontext)
@@ -1365,10 +1397,10 @@ static HRESULT nsChannelBSC_stop_binding(BSCallback *bsc, HRESULT result)
 {
     nsChannelBSC *This = nsChannelBSC_from_BSCallback(bsc);
 
-    if(result != E_ABORT) {
+    if(result != E_ABORT && This->is_doc_channel && This->bsc.window) {
         if(FAILED(result))
             handle_navigation_error(This, result);
-        else if(This->is_doc_channel && This->nschannel) {
+        else if(This->nschannel) {
             result = async_stop_request(This);
             if(SUCCEEDED(result))
                 return S_OK;
@@ -1391,10 +1423,17 @@ static HRESULT handle_redirect(nsChannelBSC *This, const WCHAR *new_url)
     nsRedirectCallback *callback;
     nsIChannelEventSink *sink;
     nsChannel *new_channel;
+    IMoniker *mon;
     nsresult nsres;
     HRESULT hres;
 
     TRACE("(%p)->(%s)\n", This, debugstr_w(new_url));
+
+    hres = CreateURLMoniker(NULL, new_url, &mon);
+    if(FAILED(hres))
+        return hres;
+    IMoniker_Release(This->bsc.mon);
+    This->bsc.mon = mon;
 
     if(!This->nschannel || !This->nschannel->notif_callback)
         return S_OK;
@@ -1830,8 +1869,7 @@ HRESULT channelbsc_load_stream(HTMLInnerWindow *pending_window, IMoniker *mon, I
     if(SUCCEEDED(hres))
         hres = async_stop_request(bscallback);
     if(FAILED(hres))
-        IBindStatusCallback_OnStopBinding(&bscallback->bsc.IBindStatusCallback_iface, hres,
-                ERROR_SUCCESS);
+        IBindStatusCallback_OnStopBinding(&bscallback->bsc.IBindStatusCallback_iface, hres, NULL);
 
     return hres;
 }

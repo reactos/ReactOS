@@ -16,7 +16,24 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdarg.h>
+#include <assert.h>
+
+#define COBJMACROS
+
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "ole2.h"
+#include "mshtmdid.h"
+
 #include "mshtml_private.h"
+#include "htmlevent.h"
+#include "htmlscript.h"
+
+#include "wine/debug.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 typedef struct {
     IDispatch *handler_prop;
@@ -67,6 +84,9 @@ static const WCHAR onfocusW[] = {'o','n','f','o','c','u','s',0};
 static const WCHAR focusinW[] = {'f','o','c','u','s','i','n',0};
 static const WCHAR onfocusinW[] = {'o','n','f','o','c','u','s','i','n',0};
 
+static const WCHAR focusoutW[] = {'f','o','c','u','s','o','u','t',0};
+static const WCHAR onfocusoutW[] = {'o','n','f','o','c','u','s','o','u','t',0};
+
 static const WCHAR helpW[] = {'h','e','l','p',0};
 static const WCHAR onhelpW[] = {'o','n','h','e','l','p',0};
 
@@ -81,6 +101,9 @@ static const WCHAR onkeyupW[] = {'o','n','k','e','y','u','p',0};
 
 static const WCHAR loadW[] = {'l','o','a','d',0};
 static const WCHAR onloadW[] = {'o','n','l','o','a','d',0};
+
+static const WCHAR messageW[] = {'m','e','s','s','a','g','e',0};
+static const WCHAR onmessageW[] = {'o','n','m','e','s','s','a','g','e',0};
 
 static const WCHAR mousedownW[] = {'m','o','u','s','e','d','o','w','n',0};
 static const WCHAR onmousedownW[] = {'o','n','m','o','u','s','e','d','o','w','n',0};
@@ -118,6 +141,9 @@ static const WCHAR onselectstartW[] = {'o','n','s','e','l','e','c','t','s','t','
 static const WCHAR submitW[] = {'s','u','b','m','i','t',0};
 static const WCHAR onsubmitW[] = {'o','n','s','u','b','m','i','t',0};
 
+static const WCHAR unloadW[] = {'u','n','l','o','a','d',0};
+static const WCHAR onunloadW[] = {'o','n','u','n','l','o','a','d',0};
+
 static const WCHAR HTMLEventsW[] = {'H','T','M','L','E','v','e','n','t','s',0};
 static const WCHAR KeyboardEventW[] = {'K','e','y','b','o','a','r','d','E','v','e','n','t',0};
 static const WCHAR MouseEventW[] = {'M','o','u','s','e','E','v','e','n','t',0};
@@ -150,6 +176,7 @@ typedef struct {
 #define EVENT_BIND_TO_BODY       0x0008
 #define EVENT_CANCELABLE         0x0010
 #define EVENT_HASDEFAULTHANDLERS 0x0020
+#define EVENT_FIXME              0x0040
 
 static const event_info_t event_info[] = {
     {abortW,             onabortW,             EVENTT_NONE,   DISPID_EVMETH_ONABORT,
@@ -169,14 +196,16 @@ static const event_info_t event_info[] = {
     {dblclickW,          ondblclickW,          EVENTT_MOUSE,  DISPID_EVMETH_ONDBLCLICK,
         EVENT_DEFAULTLISTENER|EVENT_BUBBLE|EVENT_CANCELABLE},
     {dragW,              ondragW,              EVENTT_MOUSE,  DISPID_EVMETH_ONDRAG,
-        EVENT_CANCELABLE},
+        EVENT_FIXME|EVENT_CANCELABLE},
     {dragstartW,         ondragstartW,         EVENTT_MOUSE,  DISPID_EVMETH_ONDRAGSTART,
-        EVENT_CANCELABLE},
+        EVENT_FIXME|EVENT_CANCELABLE},
     {errorW,             onerrorW,             EVENTT_NONE,   DISPID_EVMETH_ONERROR,
         EVENT_BIND_TO_BODY},
     {focusW,             onfocusW,             EVENTT_HTML,   DISPID_EVMETH_ONFOCUS,
         EVENT_DEFAULTLISTENER},
     {focusinW,           onfocusinW,           EVENTT_HTML,   DISPID_EVMETH_ONFOCUSIN,
+        EVENT_BUBBLE},
+    {focusoutW,          onfocusoutW,          EVENTT_HTML,   DISPID_EVMETH_ONFOCUSOUT,
         EVENT_BUBBLE},
     {helpW,              onhelpW,              EVENTT_KEY,    DISPID_EVMETH_ONHELP,
         EVENT_BUBBLE|EVENT_CANCELABLE},
@@ -188,6 +217,8 @@ static const event_info_t event_info[] = {
         EVENT_DEFAULTLISTENER|EVENT_BUBBLE},
     {loadW,              onloadW,              EVENTT_HTML,   DISPID_EVMETH_ONLOAD,
         EVENT_BIND_TO_BODY},
+    {messageW,           onmessageW,           EVENTT_NONE,   DISPID_EVMETH_ONMESSAGE,
+        EVENT_FORWARDBODY /* FIXME: remove when we get the target right */ },
     {mousedownW,         onmousedownW,         EVENTT_MOUSE,  DISPID_EVMETH_ONMOUSEDOWN,
         EVENT_DEFAULTLISTENER|EVENT_BUBBLE|EVENT_CANCELABLE},
     {mousemoveW,         onmousemoveW,         EVENTT_MOUSE,  DISPID_EVMETH_ONMOUSEMOVE,
@@ -199,7 +230,7 @@ static const event_info_t event_info[] = {
     {mouseupW,           onmouseupW,           EVENTT_MOUSE,  DISPID_EVMETH_ONMOUSEUP,
         EVENT_DEFAULTLISTENER|EVENT_BUBBLE},
     {mousewheelW,        onmousewheelW,        EVENTT_MOUSE,  DISPID_EVMETH_ONMOUSEWHEEL,
-        0},
+        EVENT_FIXME},
     {pasteW,             onpasteW,             EVENTT_NONE,   DISPID_EVMETH_ONPASTE,
         EVENT_CANCELABLE},
     {readystatechangeW,  onreadystatechangeW,  EVENTT_NONE,   DISPID_EVMETH_ONREADYSTATECHANGE,
@@ -211,7 +242,9 @@ static const event_info_t event_info[] = {
     {selectstartW,       onselectstartW,       EVENTT_MOUSE,  DISPID_EVMETH_ONSELECTSTART,
         EVENT_CANCELABLE},
     {submitW,            onsubmitW,            EVENTT_HTML,   DISPID_EVMETH_ONSUBMIT,
-        EVENT_DEFAULTLISTENER|EVENT_BUBBLE|EVENT_CANCELABLE|EVENT_HASDEFAULTHANDLERS}
+        EVENT_DEFAULTLISTENER|EVENT_BUBBLE|EVENT_CANCELABLE|EVENT_HASDEFAULTHANDLERS},
+    {unloadW,            onunloadW,            EVENTT_HTML,   DISPID_EVMETH_ONUNLOAD,
+        EVENT_FIXME}
 };
 
 eventid_t str_to_eid(LPCWSTR str)
@@ -809,7 +842,6 @@ static const tid_t HTMLEventObj_iface_tids[] = {
 static dispex_static_data_t HTMLEventObj_dispex = {
     NULL,
     DispCEventObj_tid,
-    NULL,
     HTMLEventObj_iface_tids
 };
 
@@ -869,10 +901,11 @@ HRESULT create_event_obj(IHTMLEventObj **ret)
 
 static inline event_target_t *get_event_target_data(EventTarget *event_target, BOOL alloc)
 {
+    const dispex_static_data_vtbl_t *vtbl = dispex_get_vtbl(&event_target->dispex);
     event_target_t **ptr;
 
-    ptr = event_target->dispex.data->vtbl && event_target->dispex.data->vtbl->get_event_target_ptr
-        ? event_target->dispex.data->vtbl->get_event_target_ptr(&event_target->dispex)
+    ptr = vtbl && vtbl->get_event_target_ptr
+        ? vtbl->get_event_target_ptr(&event_target->dispex)
         : &event_target->ptr;
     if(*ptr || !alloc)
         return *ptr;
@@ -991,7 +1024,7 @@ void call_event_handlers(HTMLDocumentNode *doc, HTMLEventObj *event_obj, EventTa
         int i;
 
         V_VT(&arg) = VT_DISPATCH;
-        V_DISPATCH(&arg) = (IDispatch*)event_obj;
+        V_DISPATCH(&arg) = (IDispatch*)&event_obj->dispex.IDispatchEx_iface;
 
         i = data->event_table[eid]->handler_cnt;
         while(i--) {
@@ -1068,7 +1101,7 @@ void call_event_handlers(HTMLDocumentNode *doc, HTMLEventObj *event_obj, EventTa
 }
 
 static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *event_obj,
-        nsIDOMNode *target, IDispatch *script_this)
+        HTMLDOMNode *target, IDispatch *script_this)
 {
     IHTMLEventObj *prev_event;
     nsIDOMNode *parent, *nsnode;
@@ -1092,8 +1125,8 @@ static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *e
     prev_event = window->event;
     window->event = event_obj ? &event_obj->IHTMLEventObj_iface : NULL;
 
-    nsIDOMNode_GetNodeType(target, &node_type);
-    nsnode = target;
+    nsIDOMNode_GetNodeType(target->nsnode, &node_type);
+    nsnode = target->nsnode;
     nsIDOMNode_AddRef(nsnode);
 
     switch(node_type) {
@@ -1156,8 +1189,8 @@ static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *e
     window->event = prev_event;
 
     if(!prevent_default && (event_info[eid].flags & EVENT_HASDEFAULTHANDLERS)) {
-        nsIDOMNode_AddRef(target);
-        nsnode = target;
+        nsnode = target->nsnode;
+        nsIDOMNode_AddRef(nsnode);
 
         do {
             hres = get_node(doc, nsnode, TRUE, &node);
@@ -1192,24 +1225,18 @@ static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *e
     htmldoc_release(&doc->basedoc);
 }
 
-void fire_event(HTMLDocumentNode *doc, eventid_t eid, BOOL set_event, nsIDOMNode *target, nsIDOMEvent *nsevent,
+void fire_event(HTMLDocumentNode *doc, eventid_t eid, BOOL set_event, HTMLDOMNode *target, nsIDOMEvent *nsevent,
         IDispatch *script_this)
 {
     HTMLEventObj *event_obj = NULL;
-    HTMLDOMNode *node;
     HRESULT hres;
 
     if(set_event) {
-        hres = get_node(doc, target, TRUE, &node);
-        if(FAILED(hres))
-            return;
-
         event_obj = create_event();
-        node_release(node);
         if(!event_obj)
             return;
 
-        hres = set_event_info(event_obj, node, eid, nsevent);
+        hres = set_event_info(event_obj, target, eid, nsevent);
         if(FAILED(hres)) {
             IHTMLEventObj_Release(&event_obj->IHTMLEventObj_iface);
             return;
@@ -1261,18 +1288,13 @@ HRESULT dispatch_event(HTMLDOMNode *node, const WCHAR *event_name, VARIANT *even
     if(event_obj) {
         hres = set_event_info(event_obj, node, eid, NULL);
         if(SUCCEEDED(hres))
-            fire_event_obj(node->doc, eid, event_obj, node->nsnode, NULL);
+            fire_event_obj(node->doc, eid, event_obj, node, NULL);
 
         IHTMLEventObj_Release(&event_obj->IHTMLEventObj_iface);
         if(FAILED(hres))
             return hres;
     }else {
-        if(!(event_info[eid].flags & EVENT_DEFAULTLISTENER)) {
-            FIXME("not EVENT_DEFAULTEVENTHANDLER\n");
-            return E_NOTIMPL;
-        }
-
-        fire_event(node->doc, eid, TRUE, node->nsnode, NULL, NULL);
+        fire_event(node->doc, eid, TRUE, node, NULL, NULL);
     }
 
     *cancelled = VARIANT_TRUE; /* FIXME */
@@ -1291,7 +1313,7 @@ HRESULT call_fire_event(HTMLDOMNode *node, eventid_t eid)
             return hres;
     }
 
-    fire_event(node->doc, eid, TRUE, node->nsnode, NULL, NULL);
+    fire_event(node->doc, eid, TRUE, node, NULL, NULL);
     return S_OK;
 }
 
@@ -1322,7 +1344,23 @@ HRESULT ensure_doc_nsevent_handler(HTMLDocumentNode *doc, eventid_t eid)
 
     TRACE("%s\n", debugstr_w(event_info[eid].name));
 
-    if(!doc->nsdoc || doc->event_vector[eid] || !(event_info[eid].flags & (EVENT_DEFAULTLISTENER|EVENT_BIND_TO_BODY)))
+    if(!doc->nsdoc)
+        return S_OK;
+
+    switch(eid) {
+    case EVENTID_FOCUSIN:
+        doc->event_vector[eid] = TRUE;
+        eid = EVENTID_FOCUS;
+        break;
+    case EVENTID_FOCUSOUT:
+        doc->event_vector[eid] = TRUE;
+        eid = EVENTID_BLUR;
+        break;
+    default:
+        break;
+    }
+
+    if(doc->event_vector[eid] || !(event_info[eid].flags & (EVENT_DEFAULTLISTENER|EVENT_BIND_TO_BODY)))
         return S_OK;
 
     if(event_info[eid].flags & EVENT_BIND_TO_BODY) {
@@ -1354,10 +1392,12 @@ void detach_events(HTMLDocumentNode *doc)
     release_nsevents(doc);
 }
 
+/* Caller should ensure that it's called only once for given event in the target. */
 static void bind_event(EventTarget *event_target, eventid_t eid)
 {
-    if(event_target->dispex.data->vtbl->bind_event)
-        event_target->dispex.data->vtbl->bind_event(&event_target->dispex, eid);
+    const dispex_static_data_vtbl_t *vtbl = dispex_get_vtbl(&event_target->dispex);
+    if(vtbl->bind_event)
+        vtbl->bind_event(&event_target->dispex, eid);
     else
         FIXME("Unsupported event binding on target %p\n", event_target);
 }
@@ -1383,6 +1423,9 @@ static HRESULT set_event_handler_disp(EventTarget *event_target, eventid_t eid, 
 {
     event_target_t *data;
 
+    if(event_info[eid].flags & EVENT_FIXME)
+        FIXME("unimplemented event %s\n", debugstr_w(event_info[eid].name));
+
     remove_event_handler(event_target, eid);
     if(!disp)
         return S_OK;
@@ -1391,13 +1434,17 @@ static HRESULT set_event_handler_disp(EventTarget *event_target, eventid_t eid, 
     if(!data)
         return E_OUTOFMEMORY;
 
-    if(!alloc_handler_vector(data, eid, 0))
-        return E_OUTOFMEMORY;
+    if(!data->event_table[eid]) {
+        if(!alloc_handler_vector(data, eid, 0))
+            return E_OUTOFMEMORY;
+
+        bind_event(event_target, eid);
+    }else if(data->event_table[eid]->handler_prop) {
+        IDispatch_Release(data->event_table[eid]->handler_prop);
+    }
 
     data->event_table[eid]->handler_prop = disp;
     IDispatch_AddRef(disp);
-
-    bind_event(event_target, eid);
     return S_OK;
 }
 
@@ -1451,8 +1498,10 @@ HRESULT get_event_handler(EventTarget *event_target, eventid_t eid, VARIANT *var
     HRESULT hres;
 
     hres = dispex_get_dprop_ref(&event_target->dispex, event_info[eid].attr_name, FALSE, &v);
-    if(SUCCEEDED(hres) && V_VT(v) != VT_EMPTY)
+    if(SUCCEEDED(hres) && V_VT(v) != VT_EMPTY) {
+        V_VT(var) = VT_EMPTY;
         return VariantCopy(var, v);
+    }
 
     data = get_event_target_data(event_target, FALSE);
     if(data && data->event_table[eid] && data->event_table[eid]->handler_prop) {
@@ -1479,6 +1528,9 @@ HRESULT attach_event(EventTarget *event_target, BSTR name, IDispatch *disp, VARI
         return S_OK;
     }
 
+    if(event_info[eid].flags & EVENT_FIXME)
+        FIXME("unimplemented event %s\n", debugstr_w(event_info[eid].name));
+
     data = get_event_target_data(event_target, TRUE);
     if(!data)
         return E_OUTOFMEMORY;
@@ -1488,14 +1540,14 @@ HRESULT attach_event(EventTarget *event_target, BSTR name, IDispatch *disp, VARI
             i++;
         if(i == data->event_table[eid]->handler_cnt && !alloc_handler_vector(data, eid, i+1))
             return E_OUTOFMEMORY;
-    }else if(!alloc_handler_vector(data, eid, i+1)) {
+    }else if(alloc_handler_vector(data, eid, i+1)) {
+        bind_event(event_target, eid);
+    }else {
         return E_OUTOFMEMORY;
     }
 
     IDispatch_AddRef(disp);
     data->event_table[eid]->handlers[i] = disp;
-
-    bind_event(event_target, eid);
 
     *res = VARIANT_TRUE;
     return S_OK;
