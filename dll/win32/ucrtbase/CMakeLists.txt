@@ -1,5 +1,5 @@
 
-spec2def(ucrtbase.dll ucrtbase.spec ADD_IMPORTLIB)
+spec2def(ucrtbase.dll ucrtbase.spec NO_DBG ADD_IMPORTLIB)
 
 add_library(ucrtbase SHARED
     stubs.c
