@@ -1,3 +1,3 @@
 
-#define _MSVCRT_IMPORT
+#define _UCRTBASE_IMPORT
 #include "oldnames-common.S"

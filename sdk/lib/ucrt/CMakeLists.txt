@@ -79,7 +79,7 @@ endif()
 
 # Hack until we support globally defining _DEBUG
 if(DBG)
-    add_compile_definitions(_DEBUG)
+    #add_compile_definitions(_DEBUG)
 endif()
 
 include(conio/conio.cmake)
@@ -102,7 +102,6 @@ include(stdio/stdio.cmake)
 include(stdlib/stdlib.cmake)
 include(string/string.cmake)
 include(time/time.cmake)
-include(vcruntime/vcruntime.cmake)
 
 add_library(ucrt OBJECT
     ${UCRT_CONIO_SOURCES}

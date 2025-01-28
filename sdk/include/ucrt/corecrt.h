@@ -155,7 +155,7 @@ _CRT_BEGIN_C_HEADER
     #endif
 #endif
 
-#if defined _CRT_SUPPRESS_RESTRICT || defined _CORECRT_BUILD
+#if defined _CRT_SUPPRESS_RESTRICT || defined _CORECRT_BUILD || defined(__GNUC__)
     #define _CRTRESTRICT
 #else
     #define _CRTRESTRICT __declspec(restrict)

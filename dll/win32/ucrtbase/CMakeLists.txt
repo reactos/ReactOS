@@ -1,5 +1,5 @@
 
-spec2def(ucrtbase.dll ucrtbase.spec ADD_IMPORTLIB)
+spec2def(ucrtbase.dll ucrtbase.spec NO_DBG ADD_IMPORTLIB)
 
 add_library(ucrtbase SHARED
     stubs.c
@@ -21,8 +21,12 @@ set_entrypoint(ucrtbase __acrt_DllMain 12)
 target_link_libraries(ucrtbase
     ucrt
     ucrtsupport
+    vcruntime
     wine
 )
+
+# Implicitly link to vcstartup
+target_link_libraries(libucrtbase vcstartup)
 
 if(MSVC)
     target_link_libraries(ucrtbase runtmchk)
