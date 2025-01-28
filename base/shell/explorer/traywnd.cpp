@@ -2542,6 +2542,11 @@ ChangePos:
         return (LRESULT) GetStockObject(HOLLOW_BRUSH);
     }
 
+    LRESULT OnSysColorChange(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        return SendMessageW(m_Rebar, uMsg, wParam, lParam);
+    }
+
     LRESULT OnNcHitTest(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
     {
         RECT rcClient;
@@ -3403,6 +3408,7 @@ HandleTrayContextMenu:
         MESSAGE_HANDLER(WM_NCPAINT, OnNcPaint)
         MESSAGE_HANDLER(WM_NCACTIVATE, OnNcActivate)
         MESSAGE_HANDLER(WM_CTLCOLORBTN, OnCtlColorBtn)
+        MESSAGE_HANDLER(WM_SYSCOLORCHANGE, OnSysColorChange)
         MESSAGE_HANDLER(WM_MOVING, OnMoving)
         MESSAGE_HANDLER(WM_SIZING, OnSizing)
         MESSAGE_HANDLER(WM_WINDOWPOSCHANGING, OnWindowPosChanging)
@@ -3484,21 +3490,24 @@ HandleTrayContextMenu:
      *       with it (especially positioning of desktop icons)
      */
 
-    virtual ULONG STDMETHODCALLTYPE GetState()
+    STDMETHODIMP_(ULONG)
+    GetState() override
     {
         /* FIXME: Return ABS_ flags? */
         TRACE("IShellDesktopTray::GetState() unimplemented!\n");
         return 0;
     }
 
-    virtual HRESULT STDMETHODCALLTYPE GetTrayWindow(OUT HWND *phWndTray)
+    STDMETHODIMP
+    GetTrayWindow(OUT HWND *phWndTray) override
     {
         TRACE("IShellDesktopTray::GetTrayWindow(0x%p)\n", phWndTray);
         *phWndTray = m_hWnd;
         return S_OK;
     }
 
-    virtual HRESULT STDMETHODCALLTYPE RegisterDesktopWindow(IN HWND hWndDesktop)
+    STDMETHODIMP
+    RegisterDesktopWindow(IN HWND hWndDesktop) override
     {
         TRACE("IShellDesktopTray::RegisterDesktopWindow(0x%p)\n", hWndDesktop);
 
@@ -3506,7 +3515,8 @@ HandleTrayContextMenu:
         return S_OK;
     }
 
-    virtual HRESULT STDMETHODCALLTYPE Unknown(IN DWORD dwUnknown1, IN DWORD dwUnknown2)
+    STDMETHODIMP
+    Unknown(IN DWORD dwUnknown1, IN DWORD dwUnknown2) override
     {
         TRACE("IShellDesktopTray::Unknown(%u,%u) unimplemented!\n", dwUnknown1, dwUnknown2);
         return S_OK;
@@ -3518,7 +3528,10 @@ HandleTrayContextMenu:
         return S_OK;
     }
 
-    HRESULT WINAPI GetWindow(HWND* phwnd)
+    // *** IOleWindow methods ***
+
+    STDMETHODIMP
+    GetWindow(HWND* phwnd) override
     {
         if (!phwnd)
             return E_INVALIDARG;
@@ -3526,7 +3539,8 @@ HandleTrayContextMenu:
         return S_OK;
     }
 
-    HRESULT WINAPI ContextSensitiveHelp(BOOL fEnterMode)
+    STDMETHODIMP
+    ContextSensitiveHelp(BOOL fEnterMode) override
     {
         return E_NOTIMPL;
     }
@@ -3566,12 +3580,12 @@ public:
         return S_OK;
     }
 
-    virtual HRESULT STDMETHODCALLTYPE
-        QueryContextMenu(HMENU hPopup,
-                         UINT indexMenu,
-                         UINT idCmdFirst,
-                         UINT idCmdLast,
-                         UINT uFlags)
+    STDMETHODIMP
+    QueryContextMenu(HMENU hPopup,
+                     UINT indexMenu,
+                     UINT idCmdFirst,
+                     UINT idCmdLast,
+                     UINT uFlags) override
     {
         HMENU hMenuBase;
 
@@ -3626,8 +3640,8 @@ public:
         return S_OK;
     }
 
-    virtual HRESULT STDMETHODCALLTYPE
-        InvokeCommand(LPCMINVOKECOMMANDINFO lpici)
+    STDMETHODIMP
+    InvokeCommand(LPCMINVOKECOMMANDINFO lpici) override
     {
         UINT uiCmdId = PtrToUlong(lpici->lpVerb);
         if (uiCmdId != 0)
@@ -3656,12 +3670,13 @@ public:
         return S_OK;
     }
 
-    virtual HRESULT STDMETHODCALLTYPE
-        GetCommandString(UINT_PTR idCmd,
+    STDMETHODIMP
+    GetCommandString(
+        UINT_PTR idCmd,
         UINT uType,
         UINT *pwReserved,
         LPSTR pszName,
-        UINT cchMax)
+        UINT cchMax) override
     {
         return E_NOTIMPL;
     }

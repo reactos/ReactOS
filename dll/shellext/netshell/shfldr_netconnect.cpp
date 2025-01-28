@@ -641,6 +641,14 @@ HRESULT WINAPI CNetConUiObject::InvokeCommand(LPCMINVOKECOMMANDINFO lpcmi)
     {
         CmdId = IDS_NET_PROPERTIES;
     }
+    else if ((UINT_PTR)lpcmi->lpVerb == FCIDM_SHVIEW_RENAME) // DefView accelerator
+    {
+        CmdId = IDS_NET_RENAME;
+    }
+    else if ((UINT_PTR)lpcmi->lpVerb == FCIDM_SHVIEW_PROPERTIES) // DefView accelerator
+    {
+        CmdId = IDS_NET_PROPERTIES;
+    }
     else if (!IS_INTRESOURCE(lpcmi->lpVerb) || LOWORD(lpcmi->lpVerb) > 7)
     {
         FIXME("Got invalid command\n");
@@ -797,7 +805,7 @@ HRESULT WINAPI CNetworkConnections::GetClassID(CLSID *lpClassId)
     if (!lpClassId)
         return E_POINTER;
 
-    *lpClassId = CLSID_ConnectionFolder;
+    *lpClassId = CLSID_NetworkConnections;
 
     return S_OK;
 }

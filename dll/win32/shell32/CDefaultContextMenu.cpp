@@ -23,11 +23,6 @@ SHELL_GetRegCLSID(HKEY hKey, LPCWSTR SubKey, LPCWSTR Value, CLSID &clsid)
     return !err ? CLSIDFromString(buf, &clsid) : HRESULT_FROM_WIN32(err);
 }
 
-static inline bool RegValueExists(HKEY hKey, LPCWSTR Name)
-{
-    return RegQueryValueExW(hKey, Name, NULL, NULL, NULL, NULL) == ERROR_SUCCESS;
-}
-
 static BOOL InsertMenuItemAt(HMENU hMenu, UINT Pos, UINT Flags)
 {
     MENUITEMINFOW mii;
@@ -87,6 +82,25 @@ UINT MapVerbToDfmCmd(_In_ LPCSTR verba)
             return (int)g_StaticInvokeCmdMap[i].DfmCmd;
     }
     return 0;
+}
+
+static HRESULT
+MapVerbToCmdId(PVOID Verb, BOOL IsUnicode, IContextMenu *pCM, UINT idFirst, UINT idLast)
+{
+    const UINT gcs = IsUnicode ? GCS_VERBW : GCS_VERBA;
+    for (UINT id = idFirst; id <= idLast; ++id)
+    {
+        WCHAR buf[MAX_PATH];
+        *buf = UNICODE_NULL;
+        HRESULT hr = pCM->GetCommandString(id, gcs, NULL, (LPSTR)buf, _countof(buf));
+        if (FAILED(hr) || !*buf)
+            continue;
+        else if (IsUnicode && !_wcsicmp((LPWSTR)Verb, buf))
+            return id;
+        else if (!IsUnicode && !lstrcmpiA((LPSTR)Verb, (LPSTR)buf))
+            return id;
+    }
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 
 static inline bool IsVerbListSeparator(WCHAR Ch)
@@ -339,7 +353,7 @@ void CDefaultContextMenu::AddStaticEntry(const HKEY hkeyClass, const WCHAR *szVe
 
     TRACE("adding verb %s\n", debugstr_w(szVerb));
 
-    if (!wcsicmp(szVerb, L"open") && !(uFlags & CMF_NODEFAULT))
+    if (!_wcsicmp(szVerb, L"open") && !(uFlags & CMF_NODEFAULT))
     {
         /* open verb is always inserted in front */
         m_StaticEntries.AddHead({ szVerb, hkeyClass });
@@ -743,7 +757,7 @@ CDefaultContextMenu::AddStaticContextMenusToMenu(
     return cIds;
 }
 
-void WINAPI _InsertMenuItemW(
+BOOL WINAPI _InsertMenuItemW(
     HMENU hMenu,
     UINT indexMenu,
     BOOL fByPosition,
@@ -769,7 +783,7 @@ void WINAPI _InsertMenuItemW(
             else
             {
                 ERR("failed to load string %p\n", dwTypeData);
-                return;
+                return FALSE;
             }
         }
         else
@@ -779,7 +793,7 @@ void WINAPI _InsertMenuItemW(
 
     mii.wID = wID;
     mii.fType = fType;
-    InsertMenuItemW(hMenu, indexMenu, fByPosition, &mii);
+    return InsertMenuItemW(hMenu, indexMenu, fByPosition, &mii);
 }
 
 void
@@ -1200,7 +1214,7 @@ CDefaultContextMenu::MapVerbToCmdId(PVOID Verb, PUINT idCmd, BOOL IsUnicode)
         {
             /* The static verbs are ANSI, get a unicode version before doing the compare */
             SHAnsiToUnicode(g_StaticInvokeCmdMap[i].szStringVerb, UnicodeStr, MAX_VERB);
-            if (!wcscmp(UnicodeStr, (LPWSTR)Verb))
+            if (!_wcsicmp(UnicodeStr, (LPWSTR)Verb))
             {
                 /* Return the Corresponding Id */
                 *idCmd = g_StaticInvokeCmdMap[i].IntVerb;
@@ -1209,7 +1223,7 @@ CDefaultContextMenu::MapVerbToCmdId(PVOID Verb, PUINT idCmd, BOOL IsUnicode)
         }
         else
         {
-            if (!strcmp(g_StaticInvokeCmdMap[i].szStringVerb, (LPSTR)Verb))
+            if (!_stricmp(g_StaticInvokeCmdMap[i].szStringVerb, (LPSTR)Verb))
             {
                 *idCmd = g_StaticInvokeCmdMap[i].IntVerb;
                 return TRUE;
@@ -1217,6 +1231,18 @@ CDefaultContextMenu::MapVerbToCmdId(PVOID Verb, PUINT idCmd, BOOL IsUnicode)
         }
     }
 
+    for (POSITION it = m_DynamicEntries.GetHeadPosition(); it != NULL;)
+    {
+        DynamicShellEntry& entry = m_DynamicEntries.GetNext(it);
+        if (!entry.NumIds)
+            continue;
+        HRESULT hr = ::MapVerbToCmdId(Verb, IsUnicode, entry.pCM, 0, entry.NumIds - 1);
+        if (SUCCEEDED(hr))
+        {
+            *idCmd = m_iIdSHEFirst + entry.iIdCmdFirst + hr;
+            return TRUE;
+        }
+    }
     return FALSE;
 }
 
@@ -1501,6 +1527,8 @@ CDefaultContextMenu::InvokeCommand(
         /* Get the ID which corresponds to this verb, and update our local copy */
         if (MapVerbToCmdId((LPVOID)LocalInvokeInfo.lpVerb, &CmdId, FALSE))
             LocalInvokeInfo.lpVerb = MAKEINTRESOURCEA(CmdId);
+        else
+            return E_INVALIDARG;
     }
 
     CmdId = LOWORD(LocalInvokeInfo.lpVerb);

@@ -11,6 +11,7 @@ endif()
 list(APPEND SOURCE
     buffer.c
     draw.c
+    errinfo.c
     main.c
     metric.c
     msstyles.c

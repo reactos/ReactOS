@@ -91,8 +91,9 @@ UINT WINAPI SHEnableMenuItem(HMENU hMenu, UINT wItemID, BOOL bEnable);
 DWORD WINAPI SHCheckMenuItem(HMENU hMenu, UINT uID, BOOL bCheck);
 DWORD WINAPI SHRegisterClassA(WNDCLASSA *wndclass);
 BOOL WINAPI SHSimulateDrop(IDropTarget *pDrop, IDataObject *pDataObj, DWORD grfKeyState, PPOINTL lpPt, DWORD* pdwEffect);
-HMENU WINAPI SHGetMenuFromID(HMENU hMenu, UINT uID);
 DWORD WINAPI SHGetCurColorRes(void);
+HMENU WINAPI SHGetMenuFromID(HMENU hMenu, UINT uID);
+DWORD WINAPI SHMenuIndexFromID(HMENU hMenu, UINT uID);
 DWORD WINAPI SHWaitForSendMessageThread(HANDLE hand, DWORD dwTimeout);
 DWORD WINAPI SHSendMessageBroadcastW(UINT uMsg, WPARAM wParam, LPARAM lParam);
 HRESULT WINAPI SHIsExpandableFolder(LPSHELLFOLDER lpFolder, LPCITEMIDLIST pidl);
@@ -362,6 +363,9 @@ IContextMenu_Invoke(
     _In_ UINT uFlags);
 
 DWORD WINAPI SHGetObjectCompatFlags(IUnknown *pUnk, const CLSID *clsid);
+
+#define SHACF_WIN95SHLEXEC 0x00000200 /* Geoff Chappell */
+DWORD WINAPI SHGetAppCompatFlags(DWORD dwMask);
 
 /*
  * HACK! These functions are conflicting with <shobjidl.h> inline functions...

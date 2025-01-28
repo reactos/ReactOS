@@ -116,7 +116,7 @@ RtlpLookupDynamicFunctionEntry(
 
 /*! RtlLookupFunctionEntry
  * \brief Locates the RUNTIME_FUNCTION entry corresponding to a code address.
- * \ref http://msdn.microsoft.com/en-us/library/ms680597(VS.85).aspx
+ * \ref https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtllookupfunctionentry
  * \todo Implement HistoryTable
  */
 PRUNTIME_FUNCTION
@@ -679,7 +679,7 @@ RtlpUnwindInternal(
     ULONG64 ImageBase, EstablisherFrame;
     CONTEXT UnwindContext;
 
-    /* Get the current stack limits and registration frame */
+    /* Get the current stack limits */
     RtlpGetStackLimits(&StackLow, &StackHigh);
 
     /* If we have a target frame, then this is our high limit */
@@ -708,8 +708,11 @@ RtlpUnwindInternal(
             UnwindContext.Rip = *(DWORD64*)UnwindContext.Rsp;
             UnwindContext.Rsp += sizeof(DWORD64);
 
-            /* Copy the context back for the next iteration */
-            *ContextRecord = UnwindContext;
+            if (HandlerType == UNW_FLAG_UHANDLER)
+            {
+                /* Copy the context back for the next iteration */
+                *ContextRecord = UnwindContext;
+            }
             continue;
         }
 
@@ -756,7 +759,7 @@ RtlpUnwindInternal(
 
             /* Log the exception if it's enabled */
             RtlpCheckLogException(ExceptionRecord,
-                                  ContextRecord,
+                                  &UnwindContext,
                                   &DispatcherContext,
                                   sizeof(DispatcherContext));
 
@@ -844,8 +847,11 @@ RtlpUnwindInternal(
             break;
         }
 
-        /* We have successfully unwound a frame. Copy the unwind context back. */
-        *ContextRecord = UnwindContext;
+        if (HandlerType == UNW_FLAG_UHANDLER)
+        {
+            /* We have successfully unwound a frame. Copy the unwind context back. */
+            *ContextRecord = UnwindContext;
+        }
     }
 
     if (ExceptionRecord->ExceptionCode != STATUS_UNWIND_CONSOLIDATE)
@@ -937,6 +943,7 @@ RtlWalkFrameChain(OUT PVOID *Callers,
     PVOID HandlerData;
     ULONG i, FramesToSkip;
     PRUNTIME_FUNCTION FunctionEntry;
+    MODE CurrentMode = RtlpGetMode();
 
     DPRINT("Enter RtlWalkFrameChain\n");
 
@@ -949,11 +956,6 @@ RtlWalkFrameChain(OUT PVOID *Callers,
 
     /* Get the stack limits */
     RtlpGetStackLimits(&StackLow, &StackHigh);
-
-    /* Check if we want the user-mode stack frame */
-    if (Flags & 1)
-    {
-    }
 
     _SEH2_TRY
     {
@@ -984,15 +986,26 @@ RtlWalkFrameChain(OUT PVOID *Callers,
             }
 
             /* Check if we are in kernel mode */
-            if (RtlpGetMode() == KernelMode)
+            if (CurrentMode == KernelMode)
             {
                 /* Check if we left the kernel range */
-                if (!(Flags & 1) && (Context.Rip < 0xFFFF800000000000ULL))
+                if (Context.Rip < 0xFFFF800000000000ULL)
                 {
-                    break;
+                    /* Bail out, unless user mode was requested */
+                    if ((Flags & 1) == 0)
+                    {
+                        break;
+                    }
+
+                    /* We are in user mode now, get UM stack bounds */
+                    CurrentMode = UserMode;
+                    StackLow = (ULONG64)NtCurrentTeb()->NtTib.StackLimit;
+                    StackHigh = (ULONG64)NtCurrentTeb()->NtTib.StackBase;
                 }
             }
-            else
+
+            /* Check (again) if we are in user mode now */
+            if (CurrentMode == UserMode)
             {
                 /* Check if we left the user range */
                 if ((Context.Rip < 0x10000) ||

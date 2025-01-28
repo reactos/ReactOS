@@ -26,7 +26,7 @@
 #define IOCTL_BATTERY_SET_TRIP_POINT \
     CTL_CODE(FILE_DEVICE_BATTERY, 0x104, METHOD_BUFFERED, FILE_READ_ACCESS) // 0x294410
 
-#define IOCTL_BATTERY_QUERY_BIF \
+#define IOCTL_BATTERY_QUERY_BIF_BIX \
     CTL_CODE(FILE_DEVICE_BATTERY, 0x105, METHOD_BUFFERED, FILE_READ_ACCESS) // 0x294414
 
 #define IOCTL_BATTERY_QUERY_BST \
@@ -41,6 +41,18 @@
 #define CMBATT_ACPI_ENTRY_EXIT  0x40
 #define CMBATT_PNP_ENTRY_EXIT   0x200
 #define CMBATT_ACPI_ASSERT      0x400
+
+//
+// Constant used to determine if the battery was discharging
+// for over 15 seconds since last time the AC adapter got unplugged.
+//
+#define CMBATT_DISCHARGE_TIME   150000000
+
+//
+// Bogus constant used to determine if the remaining battery capacity
+// overflows which is returned by the hardware.
+//
+#define CMBATT_CAPACITY_BOGUS   0x100000
 
 typedef enum _CMBATT_EXTENSION_TYPE
 {
@@ -67,6 +79,13 @@ typedef enum _CMBATT_EXTENSION_TYPE
 #define CM_MAX_VALUE                0x7FFFFFFF
 #define CM_UNKNOWN_VALUE            0xFFFFFFFF
 
+#define CONVERT_MAH_TO_MWH(mA, Volts) (((mA) * (Volts) + 500) / 1000)
+
+#define CONVERT_BATT_INFO(Capacity, DesignVoltage) \
+    (((Capacity) != BATTERY_UNKNOWN_CAPACITY) \
+        ? CONVERT_MAH_TO_MWH((Capacity), (DesignVoltage)) \
+        : BATTERY_UNKNOWN_CAPACITY)
+
 typedef struct _ACPI_BST_DATA
 {
     ULONG State;
@@ -77,6 +96,8 @@ typedef struct _ACPI_BST_DATA
 
 #define ACPI_BATT_POWER_UNIT_WATTS  0x0
 #define ACPI_BATT_POWER_UNIT_AMPS   0x1
+
+#define ASCIIZ_MAX_LENGTH   256
 
 typedef struct _ACPI_BIF_DATA
 {
@@ -89,11 +110,45 @@ typedef struct _ACPI_BIF_DATA
     ULONG DesignCapacityLow;
     ULONG BatteryCapacityGranularity1;
     ULONG BatteryCapacityGranularity2;
-    CHAR ModelNumber[256];
-    CHAR SerialNumber[256];
-    CHAR BatteryType[256];
-    CHAR OemInfo[256];
+    CHAR ModelNumber[ASCIIZ_MAX_LENGTH];
+    CHAR SerialNumber[ASCIIZ_MAX_LENGTH];
+    CHAR BatteryType[ASCIIZ_MAX_LENGTH];
+    CHAR OemInfo[ASCIIZ_MAX_LENGTH];
 } ACPI_BIF_DATA, *PACPI_BIF_DATA;
+
+typedef struct _ACPI_BIX_DATA
+{
+    ULONG Revision;
+    ULONG PowerUnit;
+    ULONG DesignCapacity;
+    ULONG LastFullCapacity;
+    ULONG BatteryTechnology;
+    ULONG DesignVoltage;
+    ULONG DesignCapacityWarning;
+    ULONG DesignCapacityLow;
+    ULONG CycleCount;
+    ULONG Accuracy;
+    ULONG MaxSampleTime;
+    ULONG MinSampleTime;
+    ULONG MaxAverageInterval;
+    ULONG MinAverageInterval;
+    ULONG BatteryCapacityGranularity1;
+    ULONG BatteryCapacityGranularity2;
+    CHAR ModelNumber[ASCIIZ_MAX_LENGTH];
+    CHAR SerialNumber[ASCIIZ_MAX_LENGTH];
+    CHAR BatteryType[ASCIIZ_MAX_LENGTH];
+    CHAR OemInfo[ASCIIZ_MAX_LENGTH];
+    ULONG SwapCapability;
+} ACPI_BIX_DATA, *PACPI_BIX_DATA;
+
+typedef struct _ACPI_BATT_STATIC_INFO
+{
+    ACPI_BIF_DATA BifData;
+    ACPI_BIX_DATA BixData;
+    BOOLEAN ExtendedData;
+} ACPI_BATT_STATIC_INFO, *PACPI_BATT_STATIC_INFO;
+
+#define CMBATT_BATT_STATIC_INFO_TAG     'nItS'
 
 #define CMBATT_AR_NOTIFY            0x01
 #define CMBATT_AR_INSERT            0x02
@@ -125,7 +180,7 @@ typedef struct _CMBATT_DEVICE_EXTENSION
     ULONG TagData;
     ULONG Tag;
     ACPI_BST_DATA BstData;
-    ACPI_BIF_DATA BifData;
+    ACPI_BATT_STATIC_INFO BattInfo;
     ULONG Id;
     ULONG State;
     ULONG RemainingCapacity;
@@ -194,6 +249,13 @@ NTAPI
 CmBattGetBifData(
     PCMBATT_DEVICE_EXTENSION DeviceExtension,
     PACPI_BIF_DATA BifData
+);
+
+NTSTATUS
+NTAPI
+CmBattGetBixData(
+    _In_ PCMBATT_DEVICE_EXTENSION DeviceExtension,
+    _Out_ PACPI_BIX_DATA BixData
 );
 
 NTSTATUS

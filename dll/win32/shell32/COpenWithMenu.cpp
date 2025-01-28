@@ -204,7 +204,7 @@ BOOL COpenWithList::SaveApp(SApp *pApp)
 COpenWithList::SApp *COpenWithList::Find(LPCWSTR pwszFilename)
 {
     for (UINT i = 0; i < m_cApp; ++i)
-        if (wcsicmp(m_pApp[i].wszFilename, pwszFilename) == 0)
+        if (_wcsicmp(m_pApp[i].wszFilename, pwszFilename) == 0)
             return &m_pApp[i];
     return NULL;
 }
@@ -771,7 +771,22 @@ BOOL COpenWithList::SetDefaultHandler(SApp *pApp, LPCWSTR pwszFilename)
 
     /* Copy static verbs from Classes\Applications key */
     /* FIXME: SHCopyKey does not copy the security attributes of the keys */
+    /* FIXME: Windows does not actually copy the verb keys */
+    /* FIXME: Should probably delete any existing DelegateExecute/DropTarget/DDE verb information first */
     LSTATUS Result = SHCopyKeyW(hSrcKey, NULL, hDestKey, 0);
+#ifdef __REACTOS__
+    // FIXME: When OpenWith is used to set a new default on Windows, the FileExts key
+    // is changed to force this association. ROS does not support this. The best
+    // we can do is to try to set the verb we (incorrectly) copied as the new default.
+    HKEY hAppKey;
+    StringCbPrintfW(wszBuf, sizeof(wszBuf), L"Applications\\%s", pApp->wszFilename);
+    if (Result == ERROR_SUCCESS && !RegOpenKeyExW(HKEY_CLASSES_ROOT, wszBuf, 0, KEY_READ, &hAppKey))
+    {
+        if (HCR_GetDefaultVerbW(hAppKey, NULL, wszBuf, _countof(wszBuf)) && *wszBuf)
+            RegSetString(hDestKey, NULL, wszBuf, REG_SZ);
+        RegCloseKey(hAppKey);
+    }
+#endif // __REACTOS__
     RegCloseKey(hDestKey);
     RegCloseKey(hSrcKey);
     RegCloseKey(hKey);
@@ -1235,6 +1250,11 @@ VOID COpenWithMenu::AddApp(PVOID pApp)
         m_idCmdLast++;
 }
 
+static const CMVERBMAP g_VerbMap[] = {
+    { "openas", 0 },
+    { NULL }
+};
+
 HRESULT WINAPI COpenWithMenu::QueryContextMenu(
     HMENU hMenu,
     UINT indexMenu,
@@ -1313,14 +1333,19 @@ HRESULT WINAPI COpenWithMenu::QueryContextMenu(
 HRESULT WINAPI
 COpenWithMenu::InvokeCommand(LPCMINVOKECOMMANDINFO lpici)
 {
+    const SIZE_T idChooseApp = m_idCmdLast;
     HRESULT hr = E_FAIL;
 
     TRACE("This %p idFirst %u idLast %u idCmd %u\n", this, m_idCmdFirst, m_idCmdLast, m_idCmdFirst + LOWORD(lpici->lpVerb));
 
-    if (HIWORD(lpici->lpVerb) == 0 && m_idCmdFirst + LOWORD(lpici->lpVerb) <= m_idCmdLast)
+    if (!IS_INTRESOURCE(lpici->lpVerb) && SHELL_MapContextMenuVerbToCmdId(lpici, g_VerbMap) == 0)
+        goto DoChooseApp;
+
+    if (IS_INTRESOURCE(lpici->lpVerb) && m_idCmdFirst + LOWORD(lpici->lpVerb) <= m_idCmdLast)
     {
-        if (m_idCmdFirst + LOWORD(lpici->lpVerb) == m_idCmdLast)
+        if (m_idCmdFirst + LOWORD(lpici->lpVerb) == idChooseApp)
         {
+DoChooseApp:
             OPENASINFO info;
             LPCWSTR pwszExt = PathFindExtensionW(m_wszPath);
 
@@ -1356,8 +1381,12 @@ HRESULT WINAPI
 COpenWithMenu::GetCommandString(UINT_PTR idCmd, UINT uType,
                                 UINT* pwReserved, LPSTR pszName, UINT cchMax )
 {
-    FIXME("%p %lu %u %p %p %u\n", this,
+    TRACE("%p %lu %u %p %p %u\n", this,
           idCmd, uType, pwReserved, pszName, cchMax );
+
+    const SIZE_T idChooseApp = m_idCmdLast;
+    if (m_idCmdFirst + idCmd == idChooseApp)
+        return SHELL_GetCommandStringImpl(0, uType, pszName, cchMax, g_VerbMap);
 
     return E_NOTIMPL;
 }
